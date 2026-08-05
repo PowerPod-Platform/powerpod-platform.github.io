@@ -1,0 +1,286 @@
+/* ==========================================================================
+   PowerPod Platform — sitewide stylesheet
+   Shared by every page. Sections:
+     1. Font face
+     2. Tokens
+     3. Reset & base
+     4. Glaze system (ceramic background)
+     5. Grain
+     6. Typography
+     7. Layout utilities
+     8. Motion preferences
+   ========================================================================== */
+
+
+/* 1. Font face ============================================================ */
+/* DM Sans variable — weight axis 100–1000, optical size axis 9–40.
+   Self-hosted: no third-party request, renders offline, no CDN dependency. */
+
+@font-face {
+  font-family: 'DM Sans';
+  src: url('../fonts/DMSans-Variable-latin.woff2') format('woff2');
+  font-weight: 100 1000;
+  font-style: normal;
+  font-display: swap;
+  /* Latin subset — covers U+2122 (™) used in the wordmark. */
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+                 U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+                 U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+
+/* 2. Tokens =============================================================== */
+
+:root {
+  /* Surface */
+  --porcelain: #faf8f5;   /* warm off-white clay body */
+  --ink:       #0a0a0a;   /* near-black; pure #000 vibrates on warm white */
+
+  /* Glaze hues — all held at ~91–92% lightness, 38–60% saturation.
+     Pushing lightness below ~90% or saturation past ~65% tips the effect out
+     of fired glaze and into generic gradient mesh. */
+  --glaze-blush:      hsl(14 55% 92%);
+  --glaze-celadon:    hsl(158 38% 91%);
+  --glaze-periwinkle: hsl(222 50% 92%);
+  --glaze-clay:       hsl(38 60% 92%);
+
+  /* Glaze geometry */
+  --glaze-blur: 70px;
+  --glaze-inset: 20vmax;   /* container overhang past the viewport */
+  --blob-size: 85vmax;
+  --blob-offset: calc(var(--blob-size) / -2);
+
+  /* Type */
+  --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Floor is set so the wordmark still fits on one line at 360px — the
+     lockup reading as a single line matters more than raw size on phones. */
+  --step-display: clamp(2rem, 8.5vw, 7rem);
+
+  color-scheme: light;
+}
+
+
+/* 3. Reset & base ========================================================= */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  background-color: var(--porcelain);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+
+/* 4. Glaze system ========================================================= */
+/* Four oversized, heavily blurred colour fields drifting on mutually prime
+   cycles. Each blob runs two independent animations — position and opacity —
+   on different periods, so the colour mix at any fixed point keeps shifting
+   even when a blob is near the end of its travel. That separation is what
+   reads as moving hue rather than sliding shapes.
+
+   The container is inset past the viewport on every side so the blur's own
+   falloff at the container edge happens off-screen; otherwise it would show
+   as a soft vignette of bare base colour.
+
+   Blur is applied once here rather than per blob: one rasterisation, not four. */
+
+.glaze {
+  position: fixed;
+  inset: calc(var(--glaze-inset) * -1);
+  z-index: 0;
+  overflow: hidden;
+  filter: blur(var(--glaze-blur));
+  pointer-events: none;
+  contain: paint;
+}
+
+.glaze__blob {
+  position: absolute;
+  width: var(--blob-size);
+  height: var(--blob-size);
+  margin-top: var(--blob-offset);
+  margin-left: var(--blob-offset);
+  border-radius: 50%;
+  will-change: transform, opacity;
+}
+
+/* Centres are given in viewport units offset by the container overhang, not
+   in percentages: percentages here would resolve against the oversized
+   container, so intended placement would drift as the viewport changed. */
+
+.glaze__blob--blush {
+  top: calc(var(--glaze-inset) + 26vh);
+  left: calc(var(--glaze-inset) + 22vw);
+  background: radial-gradient(closest-side, var(--glaze-blush), transparent);
+  animation: drift-a 29s ease-in-out infinite,
+             breathe-a 47s ease-in-out infinite;
+}
+
+.glaze__blob--celadon {
+  top: calc(var(--glaze-inset) + 20vh);
+  left: calc(var(--glaze-inset) + 78vw);
+  background: radial-gradient(closest-side, var(--glaze-celadon), transparent);
+  animation: drift-b 37s ease-in-out infinite,
+             breathe-b 31s ease-in-out infinite;
+}
+
+.glaze__blob--periwinkle {
+  top: calc(var(--glaze-inset) + 78vh);
+  left: calc(var(--glaze-inset) + 26vw);
+  background: radial-gradient(closest-side, var(--glaze-periwinkle), transparent);
+  animation: drift-c 43s ease-in-out infinite,
+             breathe-a 59s ease-in-out infinite;
+}
+
+.glaze__blob--clay {
+  top: calc(var(--glaze-inset) + 74vh);
+  left: calc(var(--glaze-inset) + 76vw);
+  background: radial-gradient(closest-side, var(--glaze-clay), transparent);
+  animation: drift-d 53s ease-in-out infinite,
+             breathe-b 41s ease-in-out infinite;
+}
+
+/* Broad specular highlight — the wet look of a fired glaze.
+   Inset back to the true viewport box so its gradient stops line up with
+   what the visitor actually sees. */
+.glaze__sheen {
+  position: absolute;
+  inset: var(--glaze-inset);
+  /* Kept well under full white: at high opacity this bleaches the upper half
+     of the viewport and the glaze underneath stops reading. */
+  background: radial-gradient(115% 70% at 50% 6%,
+              rgba(255, 255, 255, 0.5), transparent 66%);
+  will-change: transform, opacity;
+  animation: sheen 61s ease-in-out infinite;
+}
+
+/* Drift keyframes. Each closes its loop (0% === 100%) with two intermediate
+   stops, which moves more organically than a two-stop `alternate` ping-pong.
+   Periods 29/37/43/53s are mutually prime, so the composite pattern's repeat
+   is far longer than any session — there is no visible loop point. */
+
+@keyframes drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(14vw, -10vh, 0) scale(1.22); }
+  66%      { transform: translate3d(-10vw, 12vh, 0) scale(0.88); }
+}
+
+@keyframes drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(-12vw, 13vh, 0) scale(0.86); }
+  66%      { transform: translate3d(9vw, -9vh, 0) scale(1.24); }
+}
+
+@keyframes drift-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(11vw, 10vh, 0) scale(1.2); }
+  66%      { transform: translate3d(-13vw, -7vh, 0) scale(0.89); }
+}
+
+@keyframes drift-d {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(-9vw, -12vh, 0) scale(1.18); }
+  66%      { transform: translate3d(12vw, 8vh, 0) scale(0.87); }
+}
+
+/* Opacity cycles, deliberately out of phase with the drift periods so the
+   colour mix at a fixed point keeps changing even mid-travel. */
+
+@keyframes breathe-a {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+@keyframes breathe-b {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
+}
+
+@keyframes sheen {
+  0%, 100% { transform: translate3d(0, 0, 0);      opacity: 0.85; }
+  50%      { transform: translate3d(0, 4vh, 0);    opacity: 1; }
+}
+
+
+/* 5. Grain ================================================================ */
+/* Fine clay tooth, via an inline feTurbulence SVG. This layer sits OUTSIDE
+   .glaze — running it through the blur would erase the very texture that
+   separates "ceramic" from "blurry gradient".
+   feColorMatrix saturate=0 is required: feTurbulence writes noise into all
+   four channels, so without it the grain comes out coloured. */
+
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 240px 240px;
+}
+
+
+/* 6. Typography =========================================================== */
+
+.wordmark {
+  margin: 0;
+  font-size: var(--step-display);
+  font-weight: 500;
+  /* Tight tracking is what makes display type read as drawn rather than
+     as body type scaled up. */
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.wordmark__tm {
+  font-size: 0.26em;
+  font-weight: 500;
+  /* Explicit offset rather than `vertical-align: super`, which would place it
+     by the font's superscript metric and sit noticeably low at this size. */
+  vertical-align: 0.75em;
+  letter-spacing: 0;
+  margin-left: 0.06em;
+}
+
+
+/* 7. Layout utilities ===================================================== */
+
+.page {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100svh;
+  padding: 2rem 1.5rem;
+}
+
+
+/* 8. Motion preferences =================================================== */
+/* Blobs hold their 0% state, which is the identity transform at full spread —
+   so the surface stays a complete ceramic composition rather than collapsing
+   to flat white. */
+
+@media (prefers-reduced-motion: reduce) {
+  .glaze__blob,
+  .glaze__sheen {
+    animation: none;
+    will-change: auto;
+  }
+
+  .glaze__blob--celadon { opacity: 0.85; }
+  .glaze__blob--clay    { opacity: 0.85; }
+}
