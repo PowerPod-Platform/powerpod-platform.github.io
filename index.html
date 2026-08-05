@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#faf8f5">
 
@@ -13,6 +13,7 @@
        here; without it the browser downloads the file a second time. -->
   <link rel="preload" href="fonts/DMSans-Variable-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles/site.css">
+  <script src="scripts/reel.js" defer></script>
 </head>
 <body>
 
@@ -26,9 +27,129 @@
   </div>
   <div class="grain" aria-hidden="true"></div>
 
-  <main class="page">
-    <h1 class="wordmark">PowerPod Platform<span class="wordmark__tm">™</span></h1>
+  <!-- ======================================================================
+       ALL BODY COPY BELOW IS PLACEHOLDER. Every block carrying
+       data-placeholder is scaffolding written to the right length and rhythm
+       for the layout, and is meant to be replaced. See README.
+       ====================================================================== -->
+
+  <main class="reel" style="--chapter-count: 6">
+    <!-- Lets the fallback scrubber measure --chapter-span in px without
+         duplicating the number in JS. -->
+    <div class="reel__metric" aria-hidden="true"></div>
+    <div class="reel__stage">
+
+      <!-- 0 ------------------------------------------------------------- -->
+      <section class="chapter chapter--hero" style="--i: 0" aria-labelledby="ch-hero">
+        <div class="chapter__inner">
+          <h1 class="wordmark" id="ch-hero">PowerPod Platform<span class="wordmark__tm">™</span></h1>
+        </div>
+      </section>
+
+      <!-- 1 ------------------------------------------------------------- -->
+      <section class="chapter" style="--i: 1" aria-labelledby="ch-standard">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-standard">Why is a standard needed?</h2>
+          <div class="chapter__body" data-placeholder>
+            <p class="chapter__lede">
+              The same power system gets designed a hundred times over, and no
+              two of them fit together.
+            </p>
+            <p>
+              Every incompatible connector, protocol and form factor is
+              duplicated effort — paid for once by the engineers who build it,
+              and again by everyone who has to design around it.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2 ------------------------------------------------------------- -->
+      <section class="chapter" style="--i: 2" aria-labelledby="ch-hardware">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-hardware">Hardware</h2>
+          <div class="chapter__body" data-placeholder>
+            <p class="chapter__lede">
+              One mechanical and electrical envelope, published in full.
+            </p>
+            <p>
+              Defined once, so that any compliant pod fits any compliant bay.
+            </p>
+            <ul class="spec">
+              <li>Form factor</li>
+              <li>Connector</li>
+              <li>Thermal limits</li>
+              <li>Safety margins</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3 ------------------------------------------------------------- -->
+      <section class="chapter" style="--i: 3" aria-labelledby="ch-software">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-software">Software</h2>
+          <div class="chapter__body" data-placeholder>
+            <p class="chapter__lede">
+              A common control surface across every compliant device.
+            </p>
+            <p>
+              One protocol for discovery, telemetry and control, with reference
+              implementations and a conformance suite — so integration is a
+              known quantity rather than a project.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 ------------------------------------------------------------- -->
+      <section class="chapter" style="--i: 4" aria-labelledby="ch-join">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-join">Join the Platform</h2>
+          <div class="chapter__body" data-placeholder>
+            <p class="chapter__lede">
+              Open specification. Open conformance. Membership optional.
+            </p>
+            <p>
+              Build against the spec freely. Join to shape revisions, access the
+              certification programme, and list compliant products.
+            </p>
+            <!-- TODO: replace href with the real destination. -->
+            <a class="cta" href="#" data-placeholder>Get the specification</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5 ------------------------------------------------------------- -->
+      <section class="chapter chapter--last" style="--i: 5" aria-labelledby="ch-members">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-members">Members</h2>
+          <div class="chapter__body" data-placeholder>
+            <p class="chapter__lede">
+              Built and maintained by the organisations shipping it.
+            </p>
+            <ul class="roster">
+              <li>Member name</li>
+              <li>Member name</li>
+              <li>Member name</li>
+              <li>Member name</li>
+              <li>Member name</li>
+              <li>Member name</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+    </div>
   </main>
+
+  <footer class="closing">
+    <p class="closing__mark">PowerPod Platform<span class="wordmark__tm">™</span></p>
+    <p class="closing__line" data-placeholder>
+      <!-- TODO: replace with the real contact route. -->
+      <a href="#">Get in touch</a>
+    </p>
+  </footer>
 
 </body>
 </html>

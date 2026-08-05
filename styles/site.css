@@ -7,8 +7,11 @@
      4. Glaze system (ceramic background)
      5. Grain
      6. Typography
-     7. Layout utilities
-     8. Motion preferences
+     7. Reel & chapters (scroll-driven narrative)
+     8. Chapter typography
+     9. Closing footer
+    10. Mobile & landscape
+    11. Motion preferences
    ========================================================================== */
 
 
@@ -44,8 +47,12 @@
   --glaze-periwinkle: hsl(222 50% 92%);
   --glaze-clay:       hsl(38 60% 92%);
 
-  /* Glaze geometry */
-  --glaze-blur: 70px;
+  /* Glaze geometry.
+     Blur scales with the viewport rather than sitting at a flat 70px: the
+     effect is proportionally identical on a small screen and materially
+     cheaper to fill, which matters once the reel stacks promoted layers on
+     top of it. */
+  --glaze-blur: clamp(40px, 6vmax, 70px);
   --glaze-inset: 20vmax;   /* container overhang past the viewport */
   --blob-size: 85vmax;
   --blob-offset: calc(var(--blob-size) / -2);
@@ -55,6 +62,40 @@
   /* Floor is set so the wordmark still fits on one line at 360px — the
      lockup reading as a single line matters more than raw size on phones. */
   --step-display: clamp(2rem, 8.5vw, 7rem);
+  --step-title:   clamp(1.75rem, 6vw, 4.5rem);
+  --step-lede:    clamp(1.05rem, 1.9vw, 1.6rem);
+  --step-body:    clamp(0.95rem, 1.2vw, 1.125rem);
+  --measure: 34ch;
+
+  /* Reel geometry.
+     Every unit here is `svh`, never `dvh`. These values set where each chapter
+     begins and ends along the scroll; `dvh` changes as the mobile URL bar
+     collapses, which would re-time the whole sequence mid-scroll and make
+     sections visibly jump. `svh` is fixed for the life of the page. */
+  --chapter-span: 280svh;    /* scroll distance one chapter owns */
+  /* Range widening at both ends. Derived from the span rather than set
+     independently, so the handoff timing holds at every breakpoint and only
+     --chapter-span is retuned below.
+
+     Deliberately small. A wide overlap sounds like the way to get a smooth
+     crossfade, but for two titles centred in the same place it cannot work:
+     with a symmetric fade, the opacity at which they cross is the *same*
+     number as the lowest opacity reached, so buying continuity always buys an
+     equal amount of double-exposure. Measured at 7%, both titles sat at 0.37
+     on top of each other and read as a printing error.
+
+     At 2% the successor starts at 96.2% — after this chapter is already gone.
+     Nothing is ever superimposed, at the cost of roughly 0.1 of a screen where
+     the ceramic shows through alone. That reads as a deliberate breath. */
+  --chapter-overlap: calc(var(--chapter-span) * 0.02);
+
+  /* Choreography. Retuned per breakpoint by overriding these, rather than by
+     writing a second set of keyframes. */
+  --scale-arrive: 1.35;   /* title size on arrival, relative to settled */
+  /* Pushed well past 1 on purpose: at the crossing point the outgoing chapter
+     is much larger than the incoming one, so the eye reads the two as
+     separated in depth rather than collided in the same plane. */
+  --scale-depart: 1.6;
 
   color-scheme: light;
 }
@@ -77,7 +118,13 @@ body {
   font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
+  /* `clip`, NOT `hidden`. `overflow-x: hidden` makes the body a scroll
+     container, which silently breaks `position: sticky` on every descendant —
+     it would defeat the entire reel. `clip` clips identically without
+     establishing a scroll container. */
+  overflow-x: clip;
+  /* Keep pull-to-refresh from firing part-way through the narrative. */
+  overscroll-behavior-y: contain;
 }
 
 
@@ -256,23 +303,418 @@ body {
 }
 
 
-/* 7. Layout utilities ===================================================== */
+/* 7. Reel & chapters ====================================================== */
+/* One sticky stage holds every chapter in the same grid cell, so they
+   crossfade in place rather than following one another.
 
-.page {
+   The obvious alternative — giving each chapter its own tall sticky block —
+   leaves an unavoidable ~100svh gap: a chapter's sticky child unpins exactly
+   when the next chapter's top is still a full viewport below, so the outgoing
+   chapter has finished fading before the incoming one starts. Stacking them
+   removes the gap entirely and makes the overlap tunable. */
+
+.reel {
   position: relative;
   z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100svh;
-  padding: 2rem 1.5rem;
+  /* Scrollable distance inside the reel comes to count·span + overlap, which
+     is exactly where the last chapter's range ends — so the final departure
+     completes at the same moment the stage unpins. */
+  height: calc(var(--chapter-count) * var(--chapter-span)
+               + var(--chapter-overlap) + 100svh);
+}
+
+.reel__stage {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  display: grid;
+  place-items: center;
+  /* `clip` not `hidden`: departing chapters scale past the viewport edges and
+     must be trimmed, but this element must not become a scroll container. */
+  overflow: clip;
+}
+
+/* Zero-width probe. Lets the fallback scrubber read the resolved pixel value
+   of --chapter-span without hard-coding the number in JS, so the two can
+   never drift apart. */
+.reel__metric {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: var(--chapter-span);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.chapter {
+  grid-area: 1 / 1;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  padding-block: calc(2rem + env(safe-area-inset-top))
+                 calc(2rem + env(safe-area-inset-bottom));
+  padding-inline: calc(1.5rem + env(safe-area-inset-left))
+                  calc(1.5rem + env(safe-area-inset-right));
+  /* Inert by default. A transparent chapter still receives touches, and six
+     of them share one grid cell — without this the topmost would swallow
+     every tap on the page. The keyframes re-enable it only while readable. */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  animation: chapter-life linear both;
+}
+
+.chapter--hero { animation-name: hero-life; }
+.chapter--last { animation-name: chapter-arrive-hold; }
+
+/* These bindings live here, next to .chapter, and NOT beside the type rules in
+   section 8 — because the `animation` shorthand resets animation-timeline and
+   animation-range to their initial values. Declared after the @supports block
+   below, it would silently strip the scroll timeline off the title and body,
+   leaving them fill-frozen at their end state: the title never arriving
+   oversized, the body copy visible from the first frame. Any later rule using
+   the shorthand on these elements reintroduces that bug. */
+.chapter__title { animation: title-settle linear both; }
+.chapter__body  { animation: body-reveal linear both; }
+
+.chapter__inner {
+  display: grid;
+  justify-items: center;
+  gap: clamp(1.1rem, 2.4vw, 1.9rem);
+  width: 100%;
+  max-width: 62rem;
+  text-align: center;
+}
+
+/* Native path — no JavaScript involved. Chapter i owns
+   [i·span, (i+1)·span], widened by the overlap at both ends so adjacent
+   chapters crossfade instead of handing over abruptly.
+
+   Offsets are absolute rather than percentages: percentages resolve against
+   total document scroll, so every chapter's timing would shift whenever the
+   page's length changed. --i is inherited, so the title and body pick up the
+   same window as their chapter. */
+
+@supports (animation-timeline: scroll(root block)) {
+  .chapter,
+  .chapter__title,
+  .chapter__body {
+    animation-timeline: scroll(root block);
+    animation-range:
+      calc(var(--i) * var(--chapter-span) - var(--chapter-overlap))
+      calc((var(--i) + 1) * var(--chapter-span) + var(--chapter-overlap));
+  }
+
+  /* The hero is already on screen at rest, so it has no arrival beat and its
+     range must start at 0 — a negative start would leave it part-faded at
+     scroll position zero. */
+  .chapter--hero {
+    animation-range: 0 calc(var(--chapter-span) + var(--chapter-overlap));
+  }
+}
+
+/* Fallback path. Default to a plain stacked document: a visitor whose browser
+   lacks scroll timelines AND has JavaScript disabled must get readable
+   content, never a blank page. scripts/reel.js adds .reel-scrub to <html>
+   only once it is actually able to drive the sequence. */
+
+@supports not (animation-timeline: scroll(root block)) {
+  .reel { height: auto; }
+
+  .reel__stage {
+    position: static;
+    height: auto;
+    display: block;
+    overflow: visible;
+  }
+
+  .chapter {
+    min-height: 100svh;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    animation: none;
+  }
+
+  .chapter__title,
+  .chapter__body { animation: none; }
+
+  /* JS is present and driving: restore the reel and hand it paused
+     animations to scrub. The @keyframes are the same ones the native path
+     uses, so the two drivers cannot diverge. */
+  .reel-scrub .reel {
+    height: calc(var(--chapter-count) * var(--chapter-span)
+                 + var(--chapter-overlap) + 100svh);
+  }
+
+  .reel-scrub .reel__stage {
+    position: sticky;
+    top: 0;
+    height: 100svh;
+    display: grid;
+    place-items: center;
+    overflow: clip;
+  }
+
+  .reel-scrub .chapter {
+    min-height: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    animation: chapter-life 1s linear both paused;
+  }
+
+  .reel-scrub .chapter--hero { animation-name: hero-life; }
+  .reel-scrub .chapter--last { animation-name: chapter-arrive-hold; }
+  .reel-scrub .chapter__title { animation: title-settle 1s linear both paused; }
+  .reel-scrub .chapter__body  { animation: body-reveal 1s linear both paused; }
+}
+
+/* The four beats: arrive 0–7%, settle 7–30%, hold 30–88%, depart 88–96%.
+   Hold is deliberately by far the longest — it is the only beat during which
+   anyone can actually read.
+
+   The departure completes at 96%, just before the successor starts at 96.2%,
+   so the two are never on screen together. The small vertical drift — in from
+   below, out upwards — gives the handoff a direction, so the eye follows one
+   chapter out and the next one in rather than watching things dissolve in
+   place.
+
+   visibility and pointer-events are discrete: they flip at the *midpoint*
+   between the keyframes declaring them, which is why `visible` is pinned at
+   1% rather than at 7%. Declaring it at 7% would flip at 3.5%, popping the
+   chapter into existence already at half opacity. */
+
+@keyframes chapter-life {
+  0%   { opacity: 0; visibility: hidden; pointer-events: none;
+         transform: scale(0.94) translateY(2.5vh); }
+  1%   { visibility: visible; }
+  7%   { opacity: 1; transform: scale(1) translateY(0); }
+  30%  { pointer-events: auto; }
+  88%  { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
+  90%  { pointer-events: none; }
+  96%  { opacity: 0;
+         transform: scale(var(--scale-depart)) translateY(-3vh); }
+  99%  { visibility: visible; }
+  100% { opacity: 0; visibility: hidden; pointer-events: none;
+         transform: scale(var(--scale-depart)) translateY(-3vh); }
+}
+
+/* Same shape minus the arrival — the hero is fully present at scroll 0. */
+@keyframes hero-life {
+  0%   { opacity: 1; visibility: visible; transform: scale(1) translateY(0); }
+  88%  { opacity: 1; transform: scale(1) translateY(0); }
+  96%  { opacity: 0;
+         transform: scale(var(--scale-depart)) translateY(-3vh); }
+  99%  { visibility: visible; }
+  100% { opacity: 0; visibility: hidden;
+         transform: scale(var(--scale-depart)) translateY(-3vh); }
+}
+
+/* The final chapter arrives and stays. Departing would leave a full empty
+   viewport between it and the closing footer, because the stage still has its
+   own height to scroll away after the last range ends. Holding lets Members
+   simply scroll up as the footer scrolls in. */
+@keyframes chapter-arrive-hold {
+  0%   { opacity: 0; visibility: hidden; pointer-events: none;
+         transform: scale(0.94) translateY(2.5vh); }
+  1%   { visibility: visible; }
+  7%   { opacity: 1; transform: scale(1) translateY(0); }
+  30%  { pointer-events: auto; }
+  100% { opacity: 1; visibility: visible; pointer-events: auto;
+         transform: scale(1) translateY(0); }
+}
+
+/* The title arrives oversized and slightly low, then settles into place.
+   Both are transforms — letting the body copy push the title up through
+   layout would thrash every frame and could not run on the compositor.
+   The offset is in `em` so it stays proportional to the title's own size. */
+@keyframes title-settle {
+  0%   { transform: scale(var(--scale-arrive)) translateY(0.32em); }
+  30%  { transform: scale(1) translateY(0); }
+  100% { transform: scale(1) translateY(0); }
+}
+
+@keyframes body-reveal {
+  0%   { opacity: 0; transform: translateY(1.5rem); }
+  9%   { opacity: 0; transform: translateY(1.5rem); }
+  30%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 
-/* 8. Motion preferences =================================================== */
+/* 8. Chapter typography =================================================== */
+
+.chapter__title {
+  margin: 0;
+  font-size: var(--step-title);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
+  text-wrap: balance;
+}
+
+.chapter__body {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  width: 100%;
+  max-width: min(var(--measure), 100%);
+}
+
+.chapter__body p { margin: 0; }
+
+.chapter__lede {
+  font-size: var(--step-lede);
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.chapter__body p:not(.chapter__lede) {
+  font-size: var(--step-body);
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+}
+
+/* Inline spec list, dot-separated. */
+.spec {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem 1.4rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--step-body);
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+}
+
+.spec li { position: relative; }
+
+.spec li + li::before {
+  content: "·";
+  position: absolute;
+  left: -0.78rem;
+  opacity: 0.45;
+}
+
+.roster {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.6rem 1.5rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  width: 100%;
+  list-style: none;
+  font-size: var(--step-body);
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 3rem clears the 44px minimum tap target with room to spare. */
+  min-height: 3rem;
+  margin-top: 0.5rem;
+  padding-inline: 1.6rem;
+  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--ink);
+  font-size: var(--step-body);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.35s ease, border-color 0.35s ease;
+}
+
+.cta:hover,
+.cta:focus-visible {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: color-mix(in srgb, var(--ink) 40%, transparent);
+}
+
+
+/* 9. Closing footer ======================================================= */
+
+.closing {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 1.1rem;
+  min-height: 100svh;
+  padding-block: calc(2rem + env(safe-area-inset-top))
+                 calc(2rem + env(safe-area-inset-bottom));
+  padding-inline: calc(1.5rem + env(safe-area-inset-left))
+                  calc(1.5rem + env(safe-area-inset-right));
+  text-align: center;
+}
+
+.closing__mark {
+  margin: 0;
+  font-size: var(--step-title);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.closing__line { margin: 0; font-size: var(--step-body); }
+
+.closing__line a {
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+  text-underline-offset: 0.3em;
+}
+
+.closing__line a:hover { color: var(--ink); }
+
+
+/* 10. Mobile & landscape ================================================== */
+/* The choreography is retuned by overriding tokens, not by writing a second
+   set of keyframes. */
+
+@media (max-width: 48rem) {
+  :root {
+    /* ~17 screens of scroll is fine on a trackpad and tiring on a thumb.
+       --chapter-overlap tracks this automatically, so the handoff timing is
+       identical to desktop. */
+    --chapter-span: 200svh;
+    /* The arrive beat scales UP, and scale is a transform — it overflows the
+       chapter's padding rather than being constrained by it. Measured across
+       phone widths, the danger band is ~380–400px, where "Why is a standard
+       needed?" just fits on one line: at 1.15 that left only 11px of margin at
+       384px. 1.08 restores ~22px there while still reading as an arrival. */
+    --scale-arrive: 1.08;
+    --scale-depart: 1.3;
+    --measure: 28ch;
+  }
+}
+
+/* Landscape phones leave ~390px of height for a title plus its copy. */
+@media (max-height: 30rem) and (orientation: landscape) {
+  :root {
+    --chapter-span: 180svh;
+    --step-title: clamp(1.4rem, 5vh, 2.4rem);
+    --step-lede:  clamp(0.95rem, 2.8vh, 1.15rem);
+    --step-body:  clamp(0.85rem, 2.2vh, 1rem);
+  }
+
+  .chapter__inner { gap: 0.7rem; }
+  .chapter__body  { gap: 0.6rem; }
+}
+
+
+/* 11. Motion preferences ================================================== */
 /* Blobs hold their 0% state, which is the identity transform at full spread —
    so the surface stays a complete ceramic composition rather than collapsing
-   to flat white. */
+   to flat white.
+
+   The reel collapses to an ordinary stacked document. scripts/reel.js checks
+   the same media query and declines to activate, so no .reel-scrub rule can
+   outrank these. */
 
 @media (prefers-reduced-motion: reduce) {
   .glaze__blob,
@@ -283,4 +725,29 @@ body {
 
   .glaze__blob--celadon { opacity: 0.85; }
   .glaze__blob--clay    { opacity: 0.85; }
+
+  .reel { height: auto; }
+
+  .reel__stage {
+    position: static;
+    height: auto;
+    display: block;
+    overflow: visible;
+  }
+
+  .chapter {
+    min-height: 100svh;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+    animation: none;
+  }
+
+  .chapter__title,
+  .chapter__body {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
 }
