@@ -293,11 +293,26 @@ body {
 }
 
 .wordmark__tm {
-  font-size: 0.26em;
+  /* Both knobs in one place — this rule is the only definition of the mark,
+     so it applies everywhere ™ appears (hero wordmark, closing footer, and
+     any future page using .wordmark__tm). */
+  --tm-size: 0.32;   /* mark size, as a fraction of the wordmark's font-size */
+  --tm-cap: 0.7;     /* DM Sans cap height, in em */
+
+  font-size: calc(var(--tm-size) * 1em);
   font-weight: 500;
-  /* Explicit offset rather than `vertical-align: super`, which would place it
-     by the font's superscript metric and sit noticeably low at this size. */
-  vertical-align: 0.75em;
+
+  /* Aligns the top of the ™ with the top of the P rather than guessing an
+     offset. `vertical-align` lengths resolve against the element's OWN
+     font-size, so raising the mark's top to the parent's cap height needs
+     cap × (1 − size) / size in child em — here 0.7 × 0.68 / 0.32 ≈ 1.49em.
+     Deriving it means changing --tm-size alone keeps the alignment correct.
+     (`vertical-align: super` uses the font's superscript metric, which sits
+     far below cap height at this size.) */
+  vertical-align: calc(
+    var(--tm-cap) * (1 - var(--tm-size)) / var(--tm-size) * 1em
+  );
+
   letter-spacing: 0;
   margin-left: 0.06em;
 }
