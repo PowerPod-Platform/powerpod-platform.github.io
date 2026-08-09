@@ -7,12 +7,21 @@
   <meta name="theme-color" content="#faf8f5">
 
   <title>PowerPod Platform™</title>
-  <meta name="description" content="PowerPod Platform.">
+  <meta name="description" content="One standard for portable power. Published hardware envelope, chemistry and BMS agnostic inside, PowerPodOS behind it.">
 
   <!-- Same-origin fonts still fetch in CORS mode, so `crossorigin` is required
        here; without it the browser downloads the file a second time. -->
   <link rel="preload" href="fonts/DMSans-Variable-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles/site.css">
+
+  <!-- Order matters and `defer` preserves it: three, then the CAD data the
+       film reads, then the film, then the one scroll controller that drives
+       it. reel.js is independent and only wakes up where CSS scroll timelines
+       are missing. -->
+  <script src="scripts/vendor/three.min.js" defer></script>
+  <script src="scripts/pod-geometry.js" defer></script>
+  <script src="scripts/cinema.js" defer></script>
+  <script src="scripts/scroll.js" defer></script>
   <script src="scripts/reel.js" defer></script>
 </head>
 <body>
@@ -25,17 +34,21 @@
     <div class="glaze__blob glaze__blob--clay"></div>
     <div class="glaze__sheen"></div>
   </div>
+
+  <!-- The film. scripts/scroll.js mounts a transparent WebGL canvas here and
+       leaves it empty otherwise, so a browser that cannot run it renders
+       nothing rather than a black rectangle. -->
+  <div id="film" aria-hidden="true"></div>
+
+  <!-- Reads the drawing off the lower third of the frame. Only present while
+       the film is. -->
+  <div class="scrim" aria-hidden="true"></div>
+
   <div class="grain" aria-hidden="true"></div>
 
-  <!-- ======================================================================
-       ALL BODY COPY BELOW IS PLACEHOLDER. Every block carrying
-       data-placeholder is scaffolding written to the right length and rhythm
-       for the layout, and is meant to be replaced. See README.
-       ====================================================================== -->
-
-  <main class="reel" style="--chapter-count: 6">
-    <!-- Lets the fallback scrubber measure --chapter-span in px without
-         duplicating the number in JS. -->
+  <main class="reel" style="--chapter-count: 13">
+    <!-- Lets the scroll controller and the fallback scrubber measure
+         --chapter-span in px without duplicating the number in JS. -->
     <div class="reel__metric" aria-hidden="true"></div>
     <div class="reel__stage">
 
@@ -47,17 +60,17 @@
       </section>
 
       <!-- 1 ------------------------------------------------------------- -->
-      <section class="chapter" style="--i: 1" aria-labelledby="ch-standard">
+      <section class="chapter chapter--band" style="--i: 1" aria-labelledby="ch-standard">
         <div class="chapter__inner">
           <h2 class="chapter__title" id="ch-standard">Why is a standard needed?</h2>
-          <div class="chapter__body" data-placeholder>
+          <div class="chapter__body">
             <p class="chapter__lede">
               The same power system gets designed a hundred times over, and no
               two of them fit together.
             </p>
             <p>
               Every incompatible connector, protocol and form factor is
-              duplicated effort — paid for once by the engineers who build it,
+              duplicated effort, paid for once by the engineers who build it,
               and again by everyone who has to design around it.
             </p>
           </div>
@@ -65,54 +78,138 @@
       </section>
 
       <!-- 2 ------------------------------------------------------------- -->
-      <section class="chapter" style="--i: 2" aria-labelledby="ch-hardware">
+      <section class="chapter chapter--band" style="--i: 2" aria-labelledby="ch-form">
         <div class="chapter__inner">
-          <h2 class="chapter__title" id="ch-hardware">Hardware</h2>
-          <div class="chapter__body" data-placeholder>
-            <p class="chapter__lede">
-              One mechanical and electrical envelope, published in full.
-            </p>
+          <h2 class="chapter__title" id="ch-form">One form factor.</h2>
+          <div class="chapter__body">
+            <p class="chapter__lede">Designed for portability.</p>
             <p>
-              Defined once, so that any compliant pod fits any compliant bay.
+              Larger loses portability. Smaller loses utility. This is the
+              balance.
             </p>
-            <ul class="spec">
-              <li>Form factor</li>
-              <li>Connector</li>
-              <li>Thermal limits</li>
-              <li>Safety margins</li>
-            </ul>
           </div>
         </div>
       </section>
 
       <!-- 3 ------------------------------------------------------------- -->
-      <section class="chapter" style="--i: 3" aria-labelledby="ch-software">
+      <section class="chapter chapter--band" style="--i: 3" aria-labelledby="ch-envelope">
         <div class="chapter__inner">
-          <h2 class="chapter__title" id="ch-software">Software</h2>
-          <div class="chapter__body" data-placeholder>
-            <p class="chapter__lede">
-              A common control surface across every compliant device.
-            </p>
+          <h2 class="chapter__title" id="ch-envelope">Standard outside. Agnostic inside.</h2>
+          <div class="chapter__body">
+            <p class="chapter__lede">The envelope is fixed. What fills it is not.</p>
             <p>
-              One protocol for discovery, telemetry and control, with reference
-              implementations and a conformance suite — so integration is a
-              known quantity rather than a project.
+              One published mechanical and electrical shell, so any compliant
+              pod fits any compliant bay.
             </p>
           </div>
         </div>
       </section>
 
       <!-- 4 ------------------------------------------------------------- -->
-      <section class="chapter" style="--i: 4" aria-labelledby="ch-join">
+      <section class="chapter chapter--band" style="--i: 4" aria-labelledby="ch-cells">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-cells">Use the chemistry you trust.</h2>
+          <div class="chapter__body">
+            <p class="chapter__lede">NMC, LFP, whatever you qualify.</p>
+            <p>
+              Cells stand or lie however your pack wants them. The outside
+              never changes.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5 ------------------------------------------------------------- -->
+      <section class="chapter chapter--band" style="--i: 5" aria-labelledby="ch-bms">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-bms">Integrate the BMS you believe in.</h2>
+          <div class="chapter__body">
+            <p class="chapter__lede">The board is yours. The station it mounts to is ours.</p>
+            <p>
+              Mounting, clearance and sense wiring are published, so the
+              electronics can change without redrawing the pack.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6 ------------------------------------------------------------- -->
+      <section class="chapter chapter--band" style="--i: 6" aria-labelledby="ch-connector">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-connector">Designed once. Compatible everywhere.</h2>
+          <div class="chapter__body">
+            <p class="chapter__lede">One connector face. Power, data and guidance pins.</p>
+            <p>Drawn once, so nobody has to draw it again.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7 ------------------------------------------------------------- -->
+      <section class="chapter chapter--band" style="--i: 7" aria-labelledby="ch-connected">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-connected">Every PowerPod, born connected.</h2>
+          <div class="chapter__body">
+            <p class="chapter__lede">Telematics is not a line item.</p>
+            <p>
+              Cell voltages, temperature, position and state of health leave
+              the pack from the first minute it exists.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 8 ------------------------------------------------------------- -->
+      <section class="chapter chapter--band" style="--i: 8" aria-labelledby="ch-os">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-os">PowerPodOS</h2>
+          <div class="chapter__body">
+            <p class="chapter__lede">One place where every pod lives.</p>
+            <p>
+              Fleet, health, throughput and revenue in a single system of
+              record. One dataset for the whole platform, not one per vendor.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 9 ------------------------------------------------------------- -->
+      <section class="chapter chapter--band" style="--i: 9" aria-labelledby="ch-mobile">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-mobile">PowerPod Mobile</h2>
+          <div class="chapter__body">
+            <p class="chapter__lede">The OEM's app, without the OEM building one.</p>
+            <p>
+              Swap, charge, pay and monitor. A white label surface tuned per
+              OEM, running on the same data as the dashboard.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 10 ------------------------------------------------------------ -->
+      <section class="chapter chapter--band" style="--i: 10" aria-labelledby="ch-offline">
+        <div class="chapter__inner">
+          <h2 class="chapter__title" id="ch-offline">No network. Still a business.</h2>
+          <div class="chapter__body">
+            <p class="chapter__lede">The pod talks to the phone over BLE.</p>
+            <p>
+              Sessions authorise, meter and bill on the handset, then settle
+              when a network returns. Off grid is a supported mode, not an
+              outage.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 11 ------------------------------------------------------------ -->
+      <section class="chapter chapter--band" style="--i: 11" aria-labelledby="ch-join">
         <div class="chapter__inner">
           <h2 class="chapter__title" id="ch-join">Join the Platform</h2>
-          <div class="chapter__body" data-placeholder>
-            <p class="chapter__lede">
-              Open specification. Open conformance. Membership optional.
-            </p>
+          <div class="chapter__body">
+            <p class="chapter__lede">Open specification. Open conformance. Membership optional.</p>
             <p>
-              Build against the spec freely. Join to shape revisions, access the
-              certification programme, and list compliant products.
+              Build against the spec freely. Join to shape revisions, access
+              the certification programme, and list compliant products.
             </p>
             <!-- TODO: replace href with the real destination. -->
             <a class="cta" href="#" data-placeholder>Get the specification</a>
@@ -120,8 +217,8 @@
         </div>
       </section>
 
-      <!-- 5 ------------------------------------------------------------- -->
-      <section class="chapter chapter--last" style="--i: 5" aria-labelledby="ch-members">
+      <!-- 12 ------------------------------------------------------------ -->
+      <section class="chapter chapter--last" style="--i: 12" aria-labelledby="ch-members">
         <div class="chapter__inner">
           <h2 class="chapter__title" id="ch-members">Members</h2>
           <div class="chapter__body" data-placeholder>
