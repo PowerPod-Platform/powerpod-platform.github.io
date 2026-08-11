@@ -117,63 +117,69 @@ function quadStrip(rows){
   return g;
 }
 /* =====================================================================
-   TOP CAP + HANDLE — PP_HND_WTH_CVR V1.5 R2, at its STEP dimensions.
-   The handle is a 155.34mm assembly: a mounting block at each end and a
-   101.6mm grip bar bridging them, with a finger slot underneath. It sits on
-   the DIAGONAL of the 140 square top face (whose diagonal is 197.98), so the
-   feet land 15mm inside two opposite corners.
-   The diagonal runs (+1,-1) in the face's own axes, which projects as
-   lower-left to upper-right in every shot where the whole pod is in frame —
-   horizontal at the open, and vertical alongside the phone and in the
-   closing line-up.
+   HANDLE — measured off PP_ASM_V1.obj, the full assembly mesh.
+   The handle occupies u -77.67..77.67 along the top face's diagonal, w up to
+   +-25.94 across it, and stands 17.80mm proud of the cap face (with another
+   5mm of the mounting blocks recessed into it).
+   Its top is NOT a simple curve: it is a flat plateau over the middle 72mm
+   with sinusoidal ramps down to the ends. Fitting the measured envelope with
+   17.80 * sin(t * pi/2) lands within 0.62mm mean error, so that is what is
+   drawn. The width swells from ~10.5 at the grip bar to 25.94 at the mounting
+   blocks and tapers again at the tips.
    ===================================================================== */
+const HND_W=[[0,10.6],[27,11.0],[33,12.2],[39,14.1],[45,16.9],[51,21.2],
+             [57,25.94],[63,25.93],[69,20.03],[75,13.28],[77.67,9.5]];
 function buildTop(baseX, outward){
-  const DG=Math.SQRT1_2;
-  /* Trimmed at the outer ends: on the diagonal of a 140 square the available
-     half-width is (98.99 - u), so at the STEP's full u=77.67 only +-21 fits and
-     the blocks would hang off the cap corners. Ends pulled to +-72, width to
-     +-20, which seats them on the face. The bar keeps its STEP length. */
-  const FL=[-72,-30.28], FR=[26.23,72], FW=20, FH=22.0;
-  const BAR=[-50.79,50.79], BW=15.20, BLO=10.34, BHI=22.07;        // grip bar
-  /* u along the handle, w across it, h up off the cap face */
+  /* HZ scales the height only. The measured 17.80mm reads at barely a few
+     pixels here: the handle sits at the cap's centre in depth while the cap's
+     near rim is ~66mm closer to camera, and perspective boosts the rim enough
+     to swallow it. 1.45x restores the proportion the eye expects. Everything
+     else - the diagonal, the plateau-and-ramp profile, the width table, the
+     slot - is the OBJ's own geometry, untouched. */
+  const DG=Math.SQRT1_2, UEND=77.67, UFLAT=36.0, HZ=1.45;
+  const HMAX=17.80*HZ, BAR_U=33.0, BAR_UNDER=6.69*HZ, BLOCK_BASE=-5.03*HZ;
   /* the diagonal that reads lower-left to upper-right: +u goes right and
      toward the viewer, and on a cap above eye level nearer reads higher. */
   const P=(u,w,h)=>[ baseX+outward*h, (u+w)*DG, (u-w)*DG ];
-  const g=[], d=[], surf=[];
-  const boxPts=(u0,u1,w,r,seg)=>{
-    const cu=(u0+u1)/2, hu=(u1-u0)/2;
-    return rrPts(2*hu,2*w,r,seg).map(q=>[cu+q[0], q[1]]);
-  };
-  /* the top runs as one shallow arch across the whole assembly, as it does on
-     the real handle — flat-topped boxes read far too hard */
-  const at=(h,u)=> (typeof h==='function') ? h(u) : h;
-  const solid=(u0,u1,w,h0,h1,r)=>{                 // real wireframe + occluder
-    const pts=boxPts(u0,u1,w,r,10), rows=[];
-    const loop=h=>{const v=[];
-      for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];
-        v.push(...P(a[0],a[1],at(h,a[0])), ...P(b[0],b[1],at(h,b[0])));} return seg3(v);};
-    g.push(loop(h1), loop(h0));
-    [0,0.25,0.5,0.75].forEach(f=>{        // four corner ties, not one per segment
-      const i=Math.round(f*pts.length)%pts.length;
-      g.push(seg3([...P(pts[i][0],pts[i][1],at(h0,pts[i][0])),
-                   ...P(pts[i][0],pts[i][1],at(h1,pts[i][0]))]));});
-    for(let j=0;j<=pts.length;j++){const k=j%pts.length;
-      rows.push([P(pts[k][0],pts[k][1],at(h0,pts[k][0])),
-                 P(pts[k][0],pts[k][1],at(h1,pts[k][0]))]);}
-    surf.push(quadStrip(rows));
-    const top=[];                                   // arched top surface
-    for(let j=0;j<=pts.length;j++){const k=j%pts.length;
-      top.push([P(pts[k][0],0,at(h1,pts[k][0])), P(pts[k][0],pts[k][1],at(h1,pts[k][0]))]);}
-    surf.push(quadStrip(top));
-  };
-  const ARCH=u=>FH+3.4-6.2*Math.pow(Math.min(1,Math.abs(u)/FR[1]),2.1);
-  solid(FL[0],FL[1],FW,0,ARCH,7);
-  solid(FR[0],FR[1],FW,0,ARCH,7);
-  solid(BAR[0],BAR[1],BW,BLO,ARCH,5);
-  /* Nothing is drawn without depth testing: the handle stands proud of the
-     cap, so its own solid hides its far side and hidden-line removal does the
-     rest. That reads correctly from any angle, standing or lying down. */
-  return {lines:merge(g), detail:merge(d), mesh:merge(surf)};
+  const H=u=>{const t=clamp((UEND-Math.abs(u))/(UEND-UFLAT),0,1);
+              return HMAX*Math.sin(t*Math.PI/2);};
+  const W=u=>{const a=Math.abs(u);
+    for(let i=0;i<HND_W.length-1;i++){
+      const [u0,w0]=HND_W[i], [u1,w1]=HND_W[i+1];
+      if(a<=u1) return w0+(w1-w0)*(a-u0)/(u1-u0);
+    }
+    return HND_W[HND_W.length-1][1];};
+  const B=u=>Math.abs(u)<=BAR_U ? BAR_UNDER : BLOCK_BASE;
+  const N=64, US=[];
+  for(let i=0;i<=N;i++) US.push(-UEND+2*UEND*i/N);
+  const g=[], surf=[];
+  const strip=(f)=>{const rows=US.map(u=>f(u)); surf.push(quadStrip(rows));};
+  strip(u=>[P(u,-W(u),H(u)), P(u,W(u),H(u))]);       // top
+  strip(u=>[P(u,-W(u),B(u)), P(u,-W(u),H(u))]);      // near wall
+  strip(u=>[P(u, W(u),H(u)), P(u, W(u),B(u))]);      // far wall
+  strip(u=>[P(u,-W(u),B(u)), P(u,W(u),B(u))]);       // underside / slot ceiling
+  [-UEND,UEND].forEach(u=>surf.push(quadStrip([      // tip caps
+      [P(u,-W(u),B(u)),P(u,-W(u),H(u))],[P(u,W(u),B(u)),P(u,W(u),H(u))]])));
+  const curve=(f)=>{const v=[];
+    for(let i=0;i<US.length-1;i++){const a=f(US[i]),b=f(US[i+1]); v.push(...a,...b);}
+    g.push(seg3(v));};
+  curve(u=>P(u,-W(u),H(u)));                          // top face, near edge
+  curve(u=>P(u, W(u),H(u)));                          // top face, far edge
+  curve(u=>P(u,-W(u),B(u)));                          // where it meets the cap
+  curve(u=>P(u, W(u),B(u)));
+  [-UEND,UEND].forEach(u=>{                           // tips
+    g.push(seg3([...P(u,-W(u),B(u)), ...P(u,-W(u),H(u))]));
+    g.push(seg3([...P(u, W(u),B(u)), ...P(u, W(u),H(u))]));
+    g.push(seg3([...P(u,-W(u),H(u)), ...P(u, W(u),H(u))]));
+  });
+  /* cross-section ribs: seen nearly along its own width the sweep collapses
+     to a ridge, and these are what make it read as a solid handle */
+  [-66,-50,-BAR_U,0,BAR_U,50,66].forEach(u=>{
+    const w=W(u), h1=H(u), h0=B(u);
+    g.push(seg3([...P(u,-w,h0), ...P(u,-w,h1), ...P(u,-w,h1), ...P(u,w,h1),
+                 ...P(u, w,h1), ...P(u, w,h0), ...P(u,-w,h0), ...P(u,w,h0)]));
+  });
+  return {lines:merge(g), detail:seg3([]), mesh:merge(surf)};
 }
 /* --- HANDLE: digitised from the STEP file --- */
 const handleMat=lineMat();
@@ -493,21 +499,36 @@ function setMorph(k){
    ===================================================================== */
 const ipad=new THREE.Group(); ipad.position.set(0,IPAD.y,IPAD.z); ipad.visible=false; scene.add(ipad);
 const padLineMat=lineMat({opacity:0}),padPaper=paperMat({opacity:0});
+/* The screen aperture. The lit area is derived from it below, once the canvas
+   is known, so the two can never drift apart. */
+const PAD_BEZ={w:233,h:164,r:9}, PAD_INSET=2;
 {
   /* body stops short of the recess floor so the screen stays in front of it */
   const occ=extrude(IPAD.w-0.6,IPAD.h-0.6,17.7,IPAD.d-1.5); occ.translate(0,0,-IPAD.d/2+0.2);
   ipad.add(P(occ,padPaper));
   const g=[];
   g.push(slabZ(IPAD.w,IPAD.h,18,-IPAD.d/2,IPAD.d/2));                 // body
-  g.push(loopGeom(rrPts(233,164,9),xy(IPAD.d/2)));                    // one bezel line, nothing else
+  g.push(loopGeom(rrPts(PAD_BEZ.w,PAD_BEZ.h,PAD_BEZ.r),xy(IPAD.d/2)));// one bezel line, nothing else
   ipad.add(L(merge(g),padLineMat,3));
 }
 const PW=1400,PH_=985;
+/* The lit area, inset inside the bezel line. Its height comes from the
+   canvas rather than from the bezel so texels stay square and the UI is
+   never subtly stretched; the residual difference from a true concentric
+   inset is under half a millimetre and the rounded corner still clears the
+   line comfortably.
+   The screen mesh is a flat rectangle, so its corners are rounded by
+   clipping the 2D context. Deriving that radius here rather than typing a
+   pixel count is what stops it drifting away from the line it has to sit
+   inside the next time either shape is touched. */
+const PAD_SCR={w:PAD_BEZ.w-2*PAD_INSET, r:PAD_BEZ.r-PAD_INSET};
+PAD_SCR.h=PAD_SCR.w*PH_/PW;
+const PAD_R=PAD_SCR.r*(PW/PAD_SCR.w);
 const padCv=document.createElement('canvas'); padCv.width=PW; padCv.height=PH_;
 const padCtx=padCv.getContext('2d');
 const padTex=new THREE.CanvasTexture(padCv); padTex.anisotropy=4;
 const padScreenMat=new THREE.MeshBasicMaterial({map:padTex,transparent:true,opacity:0});
-const padScreen=new THREE.Mesh(new THREE.PlaneGeometry(226,159),padScreenMat);
+const padScreen=new THREE.Mesh(new THREE.PlaneGeometry(PAD_SCR.w,PAD_SCR.h),padScreenMat);
 padScreen.position.z=IPAD.d/2-0.55;   /* seated in the recess, clear of the body */ padScreen.renderOrder=4; ipad.add(padScreen);
 
 const FONT=(w,s)=>w+" "+s+"px 'DM Sans', system-ui, sans-serif";
@@ -564,6 +585,14 @@ const CURVE=(()=>{const p=[];for(let i=0;i<=48;i++){const u=i/48;
 function drawPad(p){
   const ctx=padCtx,PADX=42;
   ctx.clearRect(0,0,PW,PH_);
+  /* Everything the screen shows is clipped to the rounded aperture, not just
+     the backing fill: the header rule runs the full width and would otherwise
+     cut across the corner it is supposed to follow. Outside the clip the
+     texture stays transparent, so the pod's own porcelain body shows through
+     the corners, which is what makes the lit area sit *in* the device rather
+     than on top of it. */
+  ctx.save();
+  rr(ctx,0,0,PW,PH_,PAD_R); ctx.clip();
   ctx.fillStyle="#fff";ctx.fillRect(0,0,PW,PH_);
   ctx.textBaseline="alphabetic";
   /* header: the product first, the view second — this screen is PowerPodOS,
@@ -658,6 +687,7 @@ function drawPad(p){
     }
   }
   ctx.globalAlpha=1;
+  ctx.restore();
   padTex.needsUpdate=true;
 }
 
@@ -667,12 +697,17 @@ function drawPad(p){
 const PHD={w:71.6,h:146.6,d:8,r:14,x:206,y:128,z:6};
 const phone=new THREE.Group(); phone.position.set(PHD.x,PHD.y,PHD.z); phone.visible=false; scene.add(phone);
 const phLineMat=lineMat({opacity:0}),phPaper=paperMat({opacity:0});
+/* Same arrangement as the iPad: aperture here, lit area derived below. It
+   matters more on this one. A phone corner is a big radius on a small screen,
+   so a square-cornered texture does not merely look wrong, it overhangs the
+   bezel line by nearly 3mm at each corner. */
+const PH_BEZ={w:PHD.w-6,h:PHD.h-6,r:11.5}, PH_INSET=0.8;
 {
   const occ=extrude(PHD.w-0.6,PHD.h-0.6,13.7,PHD.d-1.3); occ.translate(0,0,-PHD.d/2+0.2);
   phone.add(P(occ,phPaper));
   const g=[];
   g.push(slabZ(PHD.w,PHD.h,PHD.r,-PHD.d/2,PHD.d/2));                  // body
-  g.push(loopGeom(rrPts(PHD.w-6,PHD.h-6,11.5),xy(PHD.d/2)));          // one bezel line
+  g.push(loopGeom(rrPts(PH_BEZ.w,PH_BEZ.h,PH_BEZ.r),xy(PHD.d/2)));    // one bezel line
   /* side hardware — power right, volume pair left */
   const bt=(x,y0,len)=>{const q=[];
     q.push(loopGeom(rrPts(len,PHD.d-3.2,1.4),(u,v)=>[x,y0+u,v]));return merge(q);};
@@ -680,11 +715,14 @@ const phLineMat=lineMat({opacity:0}),phPaper=paperMat({opacity:0});
   phone.add(L(merge(g),phLineMat,3));
 }
 const SW=656,SH=1400;
+const PH_SCR={w:PH_BEZ.w-2*PH_INSET, r:PH_BEZ.r-PH_INSET};
+PH_SCR.h=PH_SCR.w*SH/SW;
+const PH_R=PH_SCR.r*(SW/PH_SCR.w);
 const phCv=document.createElement('canvas'); phCv.width=SW; phCv.height=SH;
 const phCtx=phCv.getContext('2d');
 const phTex=new THREE.CanvasTexture(phCv); phTex.anisotropy=4;
 const phScreenMat=new THREE.MeshBasicMaterial({map:phTex,transparent:true,opacity:0});
-const phScreen=new THREE.Mesh(new THREE.PlaneGeometry(63.9,136.4),phScreenMat);
+const phScreen=new THREE.Mesh(new THREE.PlaneGeometry(PH_SCR.w,PH_SCR.h),phScreenMat);
 phScreen.position.z=PHD.d/2-0.45;   /* seated in the recess, clear of the body */ phScreen.renderOrder=4; phone.add(phScreen);
 
 function netBars(ctx,cx,cy,level,alpha){
@@ -771,6 +809,8 @@ function drawPodFront(ctx,cx,cy,h){
 function drawPhone(p){
   const ctx=phCtx;
   ctx.clearRect(0,0,SW,SH);
+  ctx.save();
+  rr(ctx,0,0,SW,SH,PH_R); ctx.clip();
   ctx.fillStyle="#fff";ctx.fillRect(0,0,SW,SH);
   ctx.fillStyle=INK_CSS;ctx.strokeStyle=INK_CSS;
   ctx.textBaseline="alphabetic";ctx.textAlign="left";
@@ -850,6 +890,7 @@ function drawPhone(p){
     ctx.fillText("SETTLED",x0+w-36,y0+62);
     ctx.restore();
   }
+  ctx.restore();
   phTex.needsUpdate=true;
 }
 
@@ -1032,6 +1073,25 @@ function evalCam(t){
    ===================================================================== */
 const inkC=new THREE.Color(INK),amberC=new THREE.Color(AMBER),blueC=new THREE.Color(BLUE),tmp=new THREE.Color();
 let lastPad="",lastPh="",fontsReady=false;
+/* Sets a paper fill and the one thing that must always travel with it.
+ *
+ * A fill removes hidden lines by writing depth, so it may only write depth
+ * while it is actually opaque enough to explain what it is hiding. Deriving
+ * depthWrite from the beat that drove the fade instead of from the resulting
+ * opacity is how a mesh ends up invisible and still occluding: a fill that has
+ * receded to context, or has only started fading in, punches a hole in the
+ * drawing and the lines behind it disappear for no reason the viewer can see.
+ * Every paper in the film goes through here so that cannot happen again.
+ */
+function papered(m,opacity){
+  m.opacity=opacity;
+  m.depthWrite=opacity>0.9;
+}
+/* Fill ramp for a device arriving on its own. It runs well ahead of the
+   outline it belongs to, so the body is solid before its lines are readable
+   and the object arrives as a drawing on porcelain rather than as a
+   see-through box with its own far edges showing. */
+const ARRIVE=6;
 function stagger(set,k,spread){
   const n=set.mats.length;
   for(let i=0;i<n;i++){
@@ -1076,13 +1136,14 @@ function update(t){
        the balance beat, which is about the outside of the pod and nothing
        else, and dissolves on the handoff after it. */
     const opened=smoother(win(t,0.048,0.078));
-    podPaper.opacity=(1-opened)*podFade;
-    podPaper.depthWrite=podPaper.opacity>0.97;
+    papered(podPaper,(1-opened)*podFade);
     shellMat.opacity=lerp(1,0.11,opened)*podFade;
     handleMat.opacity=shellMat.opacity;
     capDetailMat.opacity=handleMat.opacity;
-    handlePaper.opacity=Math.min(1,handleMat.opacity*4)*podFade;
-    handlePaper.depthWrite=handleMat.opacity>0.02;
+    /* The handle stands at the far end of the pod, so in any shot taken down
+       the length of the pack its fill is the first thing between the lens and
+       the far edge. It fades with the casing, not faster. */
+    papered(handlePaper,handleMat.opacity*podFade);
 
     /* ---- chemistry: NMC in, LFP, solid-state, back to NMC ---- */
     const stack=win(t,0.058,0.132);                 // the first fill
@@ -1110,17 +1171,20 @@ function update(t){
     handleMat.opacity=shellMat.opacity;
     const cellVis=fCells*podFade;
 
+    /* Fill and line recede together. Seventy opaque cans standing across the
+       pack are a wall: left solid while their own outlines drop to context
+       they hide the far end of the pod from every shot taken down its length,
+       which is most of the close-ups. */
     for(let i=0;i<70;i++){
       const st=i/70*0.66, k=easeOut(win(stack,st,st+0.34));
       const a=k*nmcA*cellVis;
       cellLineMats[i].opacity=a;
-      cellPaperMats[i].opacity=k*nmcA*podFade;
-      cellPaperMats[i].depthWrite=k*nmcA>0.5;
+      papered(cellPaperMats[i],a);
       cellMeshes[i].position.y=cellMeshes[i].userData.home-(1-k)*46;
       cellMeshes[i].visible=a>0.002;
     }
     horizMat.opacity=horizA*cellVis; horizGroup.visible=horizMat.opacity>0.002;
-    horizPaper.opacity=horizA*podFade; horizPaper.depthWrite=horizA>0.5;
+    papered(horizPaper,horizA*cellVis);
 
     const kH=easeOut(win(t,0.100,0.128));
     holder.m.opacity=kH*nmcA*fCells*podFade;
@@ -1136,8 +1200,7 @@ function update(t){
     const p2out=smoother(win(t,0.344,0.360)), p1in =smoother(win(t,0.358,0.374));
     const wv=[ clamp((1-p1out)+p1in,0,1), p2in*(1-p2out) ];
     bmsFrameMat.opacity=bmsIn*fBoard*podFade;
-    bmsFramePaper.opacity=bmsIn*podFade;
-    bmsFramePaper.depthWrite=bmsIn>0.5;
+    papered(bmsFramePaper,bmsIn*fBoard*podFade);
     BMS_VARIANTS.forEach((bv,i)=>{
       const a=clamp(wv[i],0,1);
       bv.m.opacity=a*bmsIn*fBoard*podFade;
@@ -1155,25 +1218,24 @@ function update(t){
 
     /* ---- connector ---- */
     connMat.opacity=fConn*podFade;
-    connPaper.opacity=Math.min(1,fConn*3)*podFade;
-    connPaper.depthWrite=fConn>0.3;
+    papered(connPaper,Math.min(1,fConn*3)*podFade);
 
     /* ---- IoT board ---- */
     const iotIn=easeOut(win(t,0.456,0.482));
     iotMat.opacity=fIoT*podFade;
-    iotPaper.opacity=iotIn*podFade; iotPaper.depthWrite=iotIn>0.5;
+    papered(iotPaper,iotIn*fIoT*podFade);
     iotGroup.visible=iotMat.opacity>0.002;
 
     /* a single unhurried turn for the wide shot, ending square for the morph */
     pod.rotation.set(0, Math.sin(win(t,0.500,0.560)*Math.PI)*0.42, 0);
 
     /* ---- the balance ----
-       The pod swells past what a person would carry and comes back. Scale,
-       not a cut: the point is that there is no second size, only one that was
-       chosen. It runs and returns inside a single beat, so nothing downstream
-       ever sees the pod at anything other than 1. */
-    const swell=Math.sin(win(t,0.026,0.046)*Math.PI);
-    pod.scale.setScalar(1+swell*0.42);
+       Larger, then smaller, then the size that was chosen: one sine over the
+       beat gives all three in order and lands back on exactly 1, so nothing
+       downstream ever sees the pod at any other scale. It plays against the
+       plan view, which is static, because a scale change during a camera move
+       reads as the camera moving. */
+    pod.scale.setScalar(1+0.2*Math.sin(win(t,0.016,0.028)*Math.PI*2));
   }
   /* ================= MORPH ================= */
   const mk=W(0.632,0.702);
@@ -1191,7 +1253,7 @@ function update(t){
   ipad.rotation.set(0,0,0);
   ipad.scale.setScalar(1);
   padLineMat.opacity=ipVis;
-  padPaper.opacity=Math.min(1,ipVis*3.5); padPaper.depthWrite=ipVis>0.02;
+  papered(padPaper,Math.min(1,ipVis*ARRIVE));
   padScreenMat.opacity=Math.min(ipVis,act4?1:W(0.710,0.746));
   ipad.visible=ipVis>0.001;
   if(ipad.visible){
@@ -1214,7 +1276,7 @@ function update(t){
   }
   phone.scale.setScalar(lerp(0.62,1,rise));
   phLineMat.opacity=phVis;
-  phPaper.opacity=Math.min(1,phVis*3.5); phPaper.depthWrite=phVis>0.02;
+  papered(phPaper,Math.min(1,phVis*ARRIVE));
   phScreenMat.opacity=Math.min(phVis,act4?1:Math.max(W(0.892,0.920),0));
   phone.visible=phVis>0.001;
   if(phone.visible){
@@ -1247,7 +1309,7 @@ function update(t){
                           :lerp(-0.42,0,smoother(win(tB,0.604,0.690))), 0);
   vShellMat.opacity=vpVis;
   vCapDetailMat.opacity=vpVis;
-  vPaper.opacity=Math.min(1,vpVis*3.5); vPaper.depthWrite=vpVis>0.02;
+  papered(vPaper,Math.min(1,vpVis*ARRIVE));
   vpod.visible=vpVis>0.001;
   const telK=win(tB,0.702,0.736)*(1-win(tB,0.768,0.788));
   telemetry.visible=telK>0.002;

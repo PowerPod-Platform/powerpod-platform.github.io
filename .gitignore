@@ -1,1 +1,8 @@
 .DS_Store
+
+# Source CAD export — 240MB, exceeds GitHub's 100MB limit. Only the converted
+# assets/powerpod.glb (built from this) is committed.
+PP_ASM_V1.obj
+PP_ASM_V1.mtl
+node_modules/
+*.tmp.glb
