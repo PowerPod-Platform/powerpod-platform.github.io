@@ -74,8 +74,9 @@ to make room for.
 
 All of that hangs off `.film-live`, which `scroll.js` adds to `<html>` only
 once the film is actually running. Without it the page is the plain centred
-reel on bare ceramic, which is what a browser with no WebGL, a visitor with
-reduced motion, and a page with JavaScript off all get.
+reel on bare ceramic, which is what a browser with no WebGL and a page with
+JavaScript off both get. (The cinema and the paged reel run unconditionally
+otherwise — an OS-level reduced-motion preference is not checked.)
 
 ### Chapter timing
 

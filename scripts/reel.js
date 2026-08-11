@@ -14,11 +14,6 @@
 
   if (CSS.supports('animation-timeline', 'scroll(root block)')) return;
 
-  // Reduced motion keeps the plain stacked document the stylesheet already
-  // renders. Bailing out here also stops .reel-scrub rules, which are more
-  // specific, from outranking the reduced-motion block.
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
   var reel = document.querySelector('.reel');
   var stage = document.querySelector('.reel__stage');
   var metric = document.querySelector('.reel__metric');

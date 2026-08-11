@@ -2,15 +2,20 @@
  *
  * There is one scroll on this page and this file owns it, in two halves.
  *
- * THE PAGER moves the document. The reel is thirteen chapters and the visitor
- * reads one of them at a time, so a scroll is not a distance here, it is an
- * instruction: go to the next chapter. Every gesture — a wheel tick, a swipe,
- * an arrow key — is turned into exactly one page step, and the page step is
- * played out as a scroll of our own over a fixed pace. Nothing else in the
- * page has to know: the copy animates from `scrollY` through CSS scroll-driven
- * animations (styles/site.css, with scripts/reel.js scrubbing them by hand
- * where those are unsupported), so moving `scrollY` deliberately drives all of
- * it, exactly as a hand-rolled scroll used to.
+ * THE PAGER moves the document, but it no longer fights the visitor to do it.
+ * A deliberate gesture — an arrow key, Space, Home/End — is turned into
+ * exactly one page step, played out as a two-phase glide of our own (see
+ * BEAT below): fast while the camera is still arriving, then slower while
+ * the chapter's own content beat plays out in front of the now-settled text.
+ * A continuous gesture — a wheel, a trackpad fling, a touch drag — is left
+ * entirely to the browser's native scrolling: nothing is intercepted and
+ * nothing pulls it onto a chapter afterwards either, so scrolling fast feels
+ * exactly as fast as the visitor moves it and stopping between two chapters
+ * is a place the visitor is genuinely allowed to be. Nothing else in the
+ * page has to know either way: the copy animates from `scrollY` through CSS
+ * scroll-driven animations (styles/site.css, with scripts/reel.js scrubbing them by hand
+ * where those are unsupported), so moving `scrollY` — by us or by the
+ * browser — drives all of it.
  *
  * THE FILM FEED reads that same scroll and hands scripts/cinema.js a frame.
  * Position is measured in CHAPTER UNITS:
@@ -28,9 +33,9 @@
  * under which chapter. Retiming the film against the words is editing one
  * column of numbers, not re-authoring sixty animation windows.
  *
- * There is no smoothing left in the feed, and there is nothing to smooth: the
- * only thing that ever moves the scroll is the pager's own eased tween, so the
- * film runs at the pace this file chose rather than at the pace of a wheel.
+ * There is no smoothing left in the feed, and there is nothing to smooth:
+ * whatever moves the scroll — our own tween or the browser's own scrolling —
+ * is read on every frame, so the film always shows exactly where the reel is.
  */
 (function () {
   'use strict';
@@ -42,12 +47,6 @@
   var footer = document.querySelector('.closing');
   var host = document.getElementById('film');
   if (!reel || !stage || !metric) return;
-
-  // Reduced motion gets the stacked document the stylesheet already renders,
-  // with no film behind it and no paging over it. Both a scroll-driven camera
-  // and a scroll we animate ourselves are exactly what the preference is
-  // asking us not to do.
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   function hasWebGL() {
     try {
@@ -66,6 +65,13 @@
      below is one of those two things; keeping them in that order is what
      makes the film feel like it is illustrating the sentence on screen
      rather than racing it.
+
+     These are the original, fully-authored values — every chapter's "held"
+     figure genuinely is its finished frame. What used to go wrong is not the
+     numbers, it is that the pager rested at u = page + 0.5, half way through
+     an arrive/held pair, before the beat playing out inside it had actually
+     finished. BEAT (below) is what now carries the visitor the rest of the
+     way there, in the open, rather than the anchors being moved to hide it.
      --------------------------------------------------------------------- */
   var ANCHORS = [
     /* u        t       chapter / beat                                    */
@@ -81,40 +87,24 @@
        swings hard as it comes off a near-vertical look. */
     [2.20,   0.017],  //  2  one form factor, still on the drawing
     [2.88,   0.027],  //     the balance: larger, smaller, then the size chosen
-    /* The cells finish stacking before the page comes to rest rather than
-       part way through it, so the copy never arrives over a pack that is
-       visibly still assembling itself. */
-    [3.16,   0.090],  //  3  standard outside: casing dissolves, cells stack
-    [3.50,   0.134],  //     pack full, upright — reached exactly at rest
-    [3.88,   0.134],  //     held flat for the remainder of the read
+    [3.30,   0.088],  //  3  standard outside: casing dissolves, cells stack
+    [3.88,   0.130],  //     pack full, upright
     [4.07,   0.138],  //  4  chemistry: the cells lie down
     [4.88,   0.242],  //     and stand back up
     [5.30,   0.300],  //  5  BMS, frontal
     [5.88,   0.372],  //     two alternate layouts on the same frame
     [6.30,   0.402],  //  6  connector face
-    /* Parked in the camera's own authored hold (0.400 -> 0.430 in
-       scripts/cinema.js) by the time the page rests, not just short of it. */
-    [6.50,   0.436],  //     held — reached at rest
-    [6.88,   0.436],  //     held flat for the remainder of the read
+    [6.88,   0.436],  //     held
     [7.30,   0.486],  //  7  IoT board
     [7.88,   0.520],  //     held
     [8.30,   0.640],  //  8  wide shot, rise, morph, PowerPodOS lands
-    /* The dashboard finishes drawing itself before the page rests, so the
-       phone's own rise (which starts right after) never overlaps it. */
-    [8.50,   0.672],  //     the dashboard finishes drawing itself — at rest
-    [8.88,   0.672],  //     held flat for the remainder of the read
+    [8.88,   0.672],  //     the dashboard finishes drawing itself
     [9.30,   0.690],  //  9  the phone rises beside it
     [9.88,   0.736],  //     state of charge settles
     [10.20,  0.760],  // 10  signal drops
-    /* The pod is fully in frame and telemetry is mid-pulse by the time the
-       page rests, rather than resting before either has happened. */
-    [10.50,  0.838],  //     BLE link, billed on device — sending at rest
-    [10.88,  0.838],  //     held flat for the remainder of the read
+    [10.88,  0.856],  //     BLE link, billed on device, settled
     [11.30,  0.900],  // 11  the pod as hero
-    /* All three — pod, dashboard, phone — are visible by the time the page
-       rests, rather than resting before the dashboard and phone appear. */
-    [11.50,  0.952],  //     pod, dashboard and phone at 1:1 — at rest
-    [11.88,  0.952],  //     held flat for the remainder of the read
+    [11.88,  0.952],  //     pod, dashboard and phone at 1:1
     [12.20,  0.972],  // 12  all three recede
     [13.00,  1.000]   //     gone
   ];
@@ -133,6 +123,16 @@
     var a = ANCHORS[i], b = ANCHORS[i + 1];
     return a[1] + (b[1] - a[1]) * (u - a[0]) / (b[0] - a[0]);
   }
+
+  /* styles/site.css sets `html { scroll-behavior: smooth }`, which governs
+     `window.scrollTo()` as much as it governs anything else — but every
+     write in this file is already one step of an easing curve this file
+     itself is authoring (the BEAT glide, the wheel-smoothing coast below).
+     Letting the browser layer its own smoothing on top of a position that
+     is already moving smoothly, once per rendered frame, would fight that
+     easing rather than help it. `behavior: 'instant'` opts every write here
+     back out, unconditionally. */
+  function jumpTo(y) { window.scrollTo({ top: y, left: 0, behavior: 'instant' }); }
 
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
   function smoothstep(x, a, b) {
@@ -186,18 +186,33 @@
 
   /* Where a page comes to rest, in scroll pixels.
 
-     Mid-chapter: the CSS range runs from one overlap before the chapter to one
-     overlap after it, so u = i + 0.5 is dead centre of it — the middle of the
-     hold, with the arrival long finished and the departure nowhere near.
+     Every chapter rests at u = page + REST — deep into its own hold (86% of
+     the way through the chapter's own CSS animation-range, styles/site.css),
+     just short of the 88% mark where chapter-life starts fading the text back
+     out, so there is headroom against float rounding. Sitting this late in
+     the hold, rather than dead centre of it, is what leaves room for BEAT's
+     content phase (below) to actually finish playing before the page settles.
 
-     The hero is the exception. It is authored to be at rest at scroll 0: its
-     range starts there and it has no arrival beat, so parking it half a
-     chapter down would scroll the page on load for a frame that looks the
-     same. Page 0 is simply the top of the document. */
-  var SETTLE = 0.5;
+     The hero is the exception, at u = 0.5 rather than u = page + REST: it has
+     no arrival beat of its own to play out, and hero-life (styles/site.css)
+     holds full opacity from 0% all the way to 88%, so resting it mid-hold is
+     exactly as safe as resting it at the very top — it just costs the same
+     1.0 chapter-units to leave as every other hop costs, instead of 1.5.
+
+     Chapter 5 is its own exception, at 0.64 rather than 0.86: CAM1's camera
+     (scripts/cinema.js) holds the BMS frontal only up to t=0.350 before a
+     fast, hard-authored arc swings it round to the connector face for
+     chapter 6 — reached by t=0.376 — so 0.86 (t≈0.3695) rests deep inside
+     that swing, with the BMS long gone from frame. 0.64 (t≈0.342) rests just
+     after the board's own swap cycle finishes (compressed to land by 0.335,
+     see scripts/cinema.js) and comfortably before the camera ever moves. */
+  var HERO_REST = 0.5;
+  var REST = 0.86;
+  var REST_OVERRIDE = { 5: 0.64 };
 
   function settleY(page) {
-    return page <= 0 ? reelTop : reelTop + (page + SETTLE) * span;
+    var f = page <= 0 ? HERO_REST : (REST_OVERRIDE[page] || REST);
+    return reelTop + (page + f) * span;
   }
 
   function nearestPage(y) {
@@ -226,38 +241,128 @@
   /* =====================================================================
      THE PAGER
      ===================================================================== */
-  /* Pace, in milliseconds per chapter unit travelled. Duration is derived
-     from distance rather than fixed, so a step between neighbours and a jump
-     to the end move the film at the same speed — the point of the whole
-     rewrite is that the drawing plays at one known pace, whatever the input
-     was. The floor keeps a short corrective snap from being instant; the
-     ceiling keeps End from taking ten seconds. */
-  var PACE = 1500, MIN_MS = 450, MAX_MS = 4200;
-  var WHEEL_DEAD = 4;     // trackpad noise and inertia dribble
-  var SWIPE = 40;         // px of travel before a touch counts as a swipe
-  var IDLE = 140;         // quiet time before a stray scroll is settled
+  /* Pace, in milliseconds per chapter unit travelled, for the PLAIN glide —
+     backward steps and Home/End/the handoff to the footer, all keyboard-only
+     now that a wheel/touch scroll is never pulled onto a page (see SETTLING
+     below). Duration is derived from distance rather than fixed, so a step
+     between neighbours and a jump to the end move at the same speed. The
+     floor keeps a short corrective snap from being instant; the ceiling
+     keeps End from taking ten seconds. */
+  var PACE = 1800, MIN_MS = 450, MAX_MS = 4600;
+
+  /* =====================================================================
+     THE BEAT
+
+     A forward step is not one glide, it is two, back to back: a fast camera
+     arrival (t1) to the point where the chapter's text is fully on screen —
+     already an anchor in ANCHORS, the "arrive" figure — followed by a
+     slower, deliberate content beat (t2) that plays out from there to
+     u = page + REST. The visitor sees the same one continuous scroll either
+     way; it just isn't constant-speed, so the interesting part of each
+     chapter — cells re-stacking, the BMS swapping boards, the dashboard
+     drawing itself — plays in the open, after the words have already
+     arrived, instead of being buried inside a fast camera move.
+
+     arriveFraction mirrors each chapter's first ANCHORS entry (+0.30 for
+     most, +0.20 for 2/6/10/12, +0.07 for 4 — chemistry continues straight out
+     of chapter 3's already-open casing). t1/t2 default when omitted; a few
+     chapters get more time because there is more happening in them:
+       5  the full original -> alternate -> original BMS swap
+       8  the calm zoom-out/morph into the PowerPodOS shot, then the
+          dashboard drawing itself
+       10 signal drop -> telemetry -> BLE -> billed -> settled
+     ===================================================================== */
+  var T1_DEFAULT = 900, T2_DEFAULT = 2400;
+  var BEAT = {
+    1:  [0.30], 2: [0.20], 3: [0.30], 4: [0.07],
+    5:  [0.30, null, 2600],
+    6:  [0.30], 7: [0.30],
+    8:  [0.30, 2800, 2200],
+    9:  [0.30],
+    10: [0.20, null, 2600],
+    11: [0.30], 12: [0.20]
+  };
 
   var page = 0;           // the chapter the visitor is on
-  var busy = false;       // a transition is playing; input is locked out
+  var busy = false;       // a transition is playing
+  var beatMode = false;   // the current transition is a bent (arrive+content) one
   var released = false;   // handed the scroll back for the footer
   var pendingRelease = false;
-  var fromY = 0, toY = 0, toPage = 0, t0 = 0, dur = 0;
-  var guardUntil = 0;     // ignore the scroll events our own tween emits
+  var fromY = 0, bendY = 0, bendV = 0, toY = 0, toPage = 0, t0 = 0, dur = 0, t1 = 0, t2 = 0;
+
+  /* WHEEL SMOOTHING — see the 'wheel' listener under INPUT below for why this
+     exists at all: CSS `scroll-behavior: smooth` only ever smooths a
+     programmatic scroll, never one the user drives directly with an input
+     device, so a plain mouse's chunky, fixed-size wheel notches would
+     otherwise still land as instant jumps. `wheelTarget` is the running sum
+     of every notch since the wheel last went idle; each frame nudges
+     `scrollY` a fraction of the way toward it (see coastWheel in THE LOOP),
+     so ten quick notches read as one continuous glide rather than ten
+     little teleports, with no snapping or fixed destination involved — it
+     dissolves however far the gesture asked for, nothing more. */
+  var wheelTarget = null;
+  var WHEEL_TAU = 90;      // ms; how quickly scrollY closes the gap to wheelTarget
+  var lastFrameT = 0;
 
   function easeInOut(x) {
     return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
   }
 
+  /* A cubic Hermite segment: p0/p1 the two ends, v0/v1 their velocities (in
+     units of Y per ms), dur the segment's own duration, s its local 0..1
+     fraction through it. Used only for the bent (arrive + content) glide —
+     see glideBeat below for why a plain two-piece ease was replaced with
+     this. */
+  function hermite(p0, v0, p1, v1, s, segDur) {
+    var s2 = s * s, s3 = s2 * s;
+    var h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + s;
+    var h01 = -2 * s3 + 3 * s2, h11 = s3 - s2;
+    return h00 * p0 + h10 * segDur * v0 + h01 * p1 + h11 * segDur * v1;
+  }
+
   // True while gestures belong to the pager rather than to the browser.
   function engaged() { return pinned && !released; }
 
+  /* The plain, single-phase glide: used for backward steps, Home/End and the
+     footer handoff — the three cases that were never a forward read-through
+     and so never earned the two-phase beat above. */
   function glide(y, target) {
     fromY = window.scrollY;
     toY = y;
     toPage = target;
+    beatMode = false;
     dur = clamp(Math.abs(toY - fromY) / span * PACE, MIN_MS, MAX_MS);
     t0 = performance.now();
     busy = true;
+    wake();
+  }
+
+  /* The bent, two-phase glide a forward step onto a BEAT chapter takes: a
+     fast camera arrival (t1) to the point the text is on screen, then a
+     slower content beat (t2) on to the rest.
+
+     Both legs are one continuous Hermite spline, not two ease functions
+     stitched together at the bend. Two separately-eased pieces (an ease-out
+     arrival meeting an ease-in content beat) each flatten to zero velocity
+     right at the join, which stacks into a visible stall exactly where the
+     text has just arrived — the one moment this most needed to keep moving.
+     Standing the bend's own velocity at the Catmull-Rom average of the two
+     legs' secant slopes keeps the whole glide moving through it: easing away
+     from the previous rest, continuing through the bend, easing into this
+     one. */
+  function glideBeat(target) {
+    var b = BEAT[target];
+    fromY = window.scrollY;
+    bendY = reelTop + (target + b[0]) * span;
+    toY = settleY(target);
+    toPage = target;
+    t1 = b[1] || T1_DEFAULT;
+    t2 = b[2] || T2_DEFAULT;
+    bendV = 0.5 * ((bendY - fromY) / t1 + (toY - bendY) / t2);
+    dur = t1 + t2;
+    t0 = performance.now();
+    busy = true;
+    beatMode = true;
     wake();
   }
 
@@ -270,12 +375,14 @@
 
   function step(dir) {
     if (dir > 0 && page >= count - 1) { release(); return; }
-    goTo(page + dir);
+    var target = page + dir;
+    if (dir > 0 && BEAT[target]) glideBeat(target);
+    else goTo(target);
   }
 
   /* The handoff is only complete once the footer is actually on screen. Until
-     then the pager still swallows input, or the wheel that asked for the
-     footer would also scroll the page it is already animating. */
+     then the pager still swallows keyboard input, or a Space that asked for
+     the footer would also scroll the page it is already animating. */
   function release() {
     pendingRelease = true;
     glide(footerY(), count - 1);
@@ -284,27 +391,54 @@
   /* =====================================================================
      THE LOOP
 
-     One rAF, shared. It advances the tween, then feeds the film from wherever
-     the scroll actually ended up — including scroll the pager did not cause,
-     so the drawing tracks a scrollbar drag as faithfully as it tracks a page
-     step. Every beat is a pure function of u, so a still page is a still
-     image: there is nothing to redraw once everything has come to rest.
+     One rAF, shared. It advances whichever tween is playing, then feeds the
+     film from wherever the scroll actually ended up — including scroll the
+     pager did not cause, so the drawing tracks a native wheel/touch scroll or
+     a scrollbar drag exactly as faithfully as it tracks a page step. Every
+     beat is a pure function of u, so a still page is a still image: there is
+     nothing to redraw once everything has come to rest.
      ===================================================================== */
   var running = false;
   var quietUntil = 0;
 
   function frame(now) {
     if (busy) {
-      var k = dur > 0 ? clamp((now - t0) / dur, 0, 1) : 1;
-      window.scrollTo(0, fromY + (toY - fromY) * easeInOut(k));
-      if (k >= 1) {
-        window.scrollTo(0, toY);
+      var elapsed = now - t0;
+      var y;
+      if (beatMode) {
+        if (elapsed <= t1) {
+          var k1 = t1 > 0 ? clamp(elapsed / t1, 0, 1) : 1;
+          y = hermite(fromY, 0, bendY, bendV, k1, t1);
+        } else {
+          var k2 = t2 > 0 ? clamp((elapsed - t1) / t2, 0, 1) : 1;
+          y = hermite(bendY, bendV, toY, 0, k2, t2);
+        }
+      } else {
+        var k = dur > 0 ? clamp(elapsed / dur, 0, 1) : 1;
+        y = fromY + (toY - fromY) * easeInOut(k);
+      }
+      jumpTo(y);
+      if (elapsed >= dur) {
+        jumpTo(toY);
         page = toPage;
         busy = false;
+        beatMode = false;
         if (pendingRelease) { released = true; pendingRelease = false; }
-        guardUntil = now + 150;
       }
+    } else if (wheelTarget !== null) {
+      // Coast the actual scroll toward the accumulated wheel target — see
+      // the WHEEL SMOOTHING comment above `wheelTarget`'s declaration.
+      // Frame-rate independent (a dropped frame doesn't leave it undershot),
+      // and self-terminating: once within half a pixel it snaps the last
+      // sliver and clears the target rather than approaching it forever.
+      var dt = lastFrameT ? clamp(now - lastFrameT, 0, 48) : 16;
+      var cy = window.scrollY;
+      var factor = 1 - Math.exp(-dt / WHEEL_TAU);
+      var ny = cy + (wheelTarget - cy) * factor;
+      if (Math.abs(wheelTarget - ny) < 0.5) { ny = wheelTarget; wheelTarget = null; }
+      jumpTo(ny);
     }
+    lastFrameT = now;
 
     if (film) {
       var v = (window.scrollY - reelTop) / span;
@@ -312,7 +446,7 @@
       film.frame(remap(u), dimAt(u), liftAt(u));
     }
 
-    if (busy || performance.now() < quietUntil) {
+    if (busy || wheelTarget !== null || performance.now() < quietUntil) {
       requestAnimationFrame(frame);
     } else {
       running = false;
@@ -330,48 +464,36 @@
   /* =====================================================================
      INPUT
 
-     One gesture, one page. While a transition plays the gesture is swallowed
-     rather than queued: a flick of the wheel throws a dozen events and the
-     visitor asked for one chapter, not twelve.
+     Two different promises for two different gestures. A key press is a
+     single, unambiguous "next chapter" — it gets the full BEAT treatment
+     above. A wheel, trackpad fling or touch drag is continuous and its
+     destination is the visitor's to set, not ours, and there is still no
+     snapping anywhere in here: a wheel notch only ever asks to move by
+     exactly the distance it reports, smoothed (see WHEEL SMOOTHING above),
+     never rounded onto a chapter. Touch is left alone entirely — a finger
+     already scrolls exactly as smoothly as the drag that drives it, with no
+     chunky, fixed-size notch to smooth out.
      ===================================================================== */
+  function maxScrollY() {
+    return Math.max(0, document.documentElement.scrollHeight - innerHeight);
+  }
+
   addEventListener('wheel', function (e) {
     // ctrl+wheel is zoom, on a trackpad and on a mouse alike. It is not a
     // scroll and it is not ours to take.
-    if (!engaged() || e.ctrlKey) return;
-    e.preventDefault();
-    if (busy) return;
-    // A wheel can report lines or pages as readily as pixels, and a notch of
-    // three lines would fall straight through a dead zone measured in pixels.
+    if (e.ctrlKey) return;
+    if (busy) { busy = false; beatMode = false; }
     var d = e.deltaY;
-    if (e.deltaMode === 1) d *= 16;
-    else if (e.deltaMode === 2) d *= innerHeight;
-    if (Math.abs(d) < WHEEL_DEAD) return;
-    step(d > 0 ? 1 : -1);
+    if (e.deltaMode === 1) d *= 16;        // lines
+    else if (e.deltaMode === 2) d *= innerHeight; // pages
+    e.preventDefault();
+    var base = wheelTarget === null ? window.scrollY : wheelTarget;
+    wheelTarget = clamp(base + d, 0, maxScrollY());
+    wake();
   }, { passive: false });
-
-  var touchY = 0, touching = false;
 
   addEventListener('touchstart', function (e) {
-    if (!engaged() || e.touches.length !== 1) { touching = false; return; }
-    touchY = e.touches[0].clientY;
-    touching = true;
-  }, { passive: true });
-
-  addEventListener('touchmove', function (e) {
-    if (!touching || !engaged()) return;
-    // The reel is a pager on a phone too, so the drag must not also scroll.
-    e.preventDefault();
-  }, { passive: false });
-
-  addEventListener('touchend', function (e) {
-    if (!touching) return;
-    touching = false;
-    if (!engaged() || busy) return;
-    var end = (e.changedTouches && e.changedTouches[0])
-      ? e.changedTouches[0].clientY : touchY;
-    var dy = touchY - end;                 // dragging up asks for the next page
-    if (Math.abs(dy) < SWIPE) return;
-    step(dy > 0 ? 1 : -1);
+    if (engaged() && busy) { busy = false; beatMode = false; }
   }, { passive: true });
 
   /* Space is the one key with a meaning of its own: on a control it activates
@@ -400,28 +522,29 @@
     if (to >= 0) goTo(to); else step(dir);
   });
 
-  /* Everything that moves the scroll without asking us — a scrollbar drag, a
-     focus ring landing on the CTA, a restored position — is allowed to happen
-     and then settled onto the nearest page once it stops. It is also how the
-     pager takes the scroll back when the visitor returns from the footer. */
-  var idle = 0;
+  /* =====================================================================
+     SETTLING
 
-  function settleDrift() {
+     There is no snap. Everything that moves the scroll without the pager
+     animating it itself — a native wheel/touch scroll, a scrollbar drag, a
+     focus ring landing on the CTA, a restored position — is left exactly
+     where it lands, full stop, including between two chapters. All that
+     happens here is bookkeeping: `page` is kept pointing at whichever
+     chapter is nearest, purely so the *next* keyboard step (which does still
+     animate) starts from the right place, and `released` is kept tracking
+     whether the visitor has scrolled down into the footer, so the pager
+     knows to let go of the keyboard there and take it back when they scroll
+     back up. Neither of those touches `scrollY` itself. */
+  function trackPosition() {
     if (busy || !pinned) return;
-    if (performance.now() < guardUntil) return;
     var y = window.scrollY;
-    if (y > releaseLine()) { released = true; return; }
-    released = false;
-    var p = nearestPage(y);
-    page = p;
-    if (Math.abs(y - settleY(p)) > 2) glide(settleY(p), p);
+    released = y > releaseLine();
+    if (!released) page = nearestPage(y);
   }
 
   addEventListener('scroll', function () {
     wake();
-    if (busy) return;
-    clearTimeout(idle);
-    idle = setTimeout(settleDrift, IDLE);
+    trackPosition();
   }, { passive: true });
 
   /* =====================================================================
@@ -437,6 +560,7 @@
      it yet, so there the scroll is the only thing to go on. */
   function snap(keep) {
     busy = false;                       // a reflow outranks a transition
+    beatMode = false;
     pendingRelease = false;
     if (!pinned) return;
     var y = window.scrollY;
@@ -444,7 +568,7 @@
       released = y > releaseLine();
       page = nearestPage(y);
     }
-    if (!released) window.scrollTo(0, settleY(page));
+    if (!released) jumpTo(settleY(page));
   }
 
   // A restored scroll position is a position the pager never chose, and the

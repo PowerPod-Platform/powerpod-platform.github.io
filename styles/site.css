@@ -12,7 +12,6 @@
      9. Chapter typography
     10. Closing footer
     11. Mobile & landscape
-    12. Motion preferences
 
    Stacking order, bottom to top:
      0  .glaze     ceramic surface
@@ -122,7 +121,19 @@
 *::before,
 *::after { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  /* Covers whatever this page scrolls programmatically outside scripts/
+     scroll.js's own hand-tweened glides — a fragment jump, `:target`, a
+     future `scrollIntoView()` — with the browser's own easing. It does NOT
+     cover wheel/touch: per spec, `scroll-behavior` only ever governs a
+     scroll a script or navigation asks for, never one the user is driving
+     directly with an input device, so a plain mouse's chunky wheel notches
+     would land as instant jumps regardless of this rule. scripts/scroll.js
+     smooths those itself (see WHEEL SMOOTHING there) precisely because this
+     property cannot. */
+  scroll-behavior: smooth;
+}
 
 body {
   margin: 0;
@@ -277,10 +288,9 @@ body {
 /* 5. Film & scrim ========================================================= */
 /* scripts/scroll.js mounts a transparent WebGL canvas in #film and puts
    .film-live on <html>. Everything that only makes sense with a drawing
-   behind it hangs off that class, so a browser without WebGL, a visitor with
-   reduced motion, and a page with JavaScript off all get the plain centred
-   reel on bare ceramic instead of a layout arranged around something that
-   is not there.
+   behind it hangs off that class, so a browser without WebGL and a page with
+   JavaScript off both get the plain centred reel on bare ceramic instead of
+   a layout arranged around something that is not there.
 
    The canvas clears to transparent and its occluder meshes are painted in
    --porcelain, so the pod reads as an object of the page's own material
@@ -843,61 +853,7 @@ body {
 }
 
 
-/* 12. Motion preferences ================================================== */
-/* Blobs hold their 0% state, which is the identity transform at full spread —
-   so the surface stays a complete ceramic composition rather than collapsing
-   to flat white.
-
-   The reel collapses to an ordinary stacked document. scripts/reel.js checks
-   the same media query and declines to activate, so no .reel-scrub rule can
-   outrank these. */
-
-@media (prefers-reduced-motion: reduce) {
-  .glaze__blob,
-  .glaze__sheen {
-    animation: none;
-    will-change: auto;
-  }
-
-  /* scripts/scroll.js declines to start the film under this preference, so
-     normally there is nothing here to hide. These rules cover the case where
-     the preference is turned on after the film is already running: the canvas
-     would otherwise sit frozen on whatever frame it stopped at, and the copy
-     would stay banded around a subject that no longer moves. */
-  #film,
-  .scrim { display: none; }
-
-  .film-live .chapter--band {
-    align-items: center;
-    padding-bottom: calc(2rem + env(safe-area-inset-bottom));
-    transform-origin: 50% 50%;
-  }
-
-  .glaze__blob--celadon { opacity: 0.85; }
-  .glaze__blob--clay    { opacity: 0.85; }
-
-  .reel { height: auto; }
-
-  .reel__stage {
-    position: static;
-    height: auto;
-    display: block;
-    overflow: visible;
-  }
-
-  .chapter {
-    min-height: 100svh;
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transform: none;
-    animation: none;
-  }
-
-  .chapter__title,
-  .chapter__body {
-    opacity: 1;
-    transform: none;
-    animation: none;
-  }
-}
+/* Section 12 (motion preferences) removed on purpose: every visitor gets the
+   full cinema and the paged reel, regardless of an OS-level reduced-motion
+   setting. scripts/scroll.js and scripts/reel.js no longer check for it
+   either. */

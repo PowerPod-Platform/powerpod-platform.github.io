@@ -88,6 +88,10 @@ function rr(ctx,x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,
    ===================================================================== */
 const pod=new THREE.Group(); scene.add(pod);
 const podPaper=paperMat();
+/* The outside of the pod is the real hidden-line drawing (PODART, below), not
+   the parametric shell. These are its own line and fill, kept separate so the
+   two can cross-fade at the moment the casing opens. */
+const objPodMat=lineMat({opacity:0}), objPodPaper=paperMat({opacity:0});
 {
   /* 1.4mm inset: enough clearance that the silhouette lines never z-fight
      with their own fill at grazing angles */
@@ -117,70 +121,100 @@ function quadStrip(rows){
   return g;
 }
 /* =====================================================================
-   HANDLE — measured off PP_ASM_V1.obj, the full assembly mesh.
-   The handle occupies u -77.67..77.67 along the top face's diagonal, w up to
-   +-25.94 across it, and stands 17.80mm proud of the cap face (with another
-   5mm of the mounting blocks recessed into it).
-   Its top is NOT a simple curve: it is a flat plateau over the middle 72mm
-   with sinusoidal ramps down to the ends. Fitting the measured envelope with
-   17.80 * sin(t * pi/2) lands within 0.62mm mean error, so that is what is
-   drawn. The width swells from ~10.5 at the grip bar to 25.94 at the mounting
-   blocks and tapers again at the tips.
+   HANDLE — the actual mesh from PP_ASM_V1.obj. Not a fit, not a parametric
+   stand-in: the five bodies that make up the handle (two mounting blocks,
+   the grip bar and two screws) all proved exactly convex — every one of
+   their 11,472 vertices lies on its own convex hull to 0.0000mm — so their
+   hulls ARE the geometry. HX carries the true feature edges (503 of them,
+   every edge where the surface turns by more than 18 degrees) and the hull
+   triangles that occlude them.
+   Coordinates are the OBJ's own, expressed along the top face's diagonal:
+   u -77.67..77.67 across it, w across the width, h up from the cap face.
+   Nothing here is scaled, smoothed or re-proportioned.
    ===================================================================== */
-const HND_W=[[0,10.6],[27,11.0],[33,12.2],[39,14.1],[45,16.9],[51,21.2],
-             [57,25.94],[63,25.93],[69,20.03],[75,13.28],[77.67,9.5]];
 function buildTop(baseX, outward){
-  /* HZ scales the height only. The measured 17.80mm reads at barely a few
-     pixels here: the handle sits at the cap's centre in depth while the cap's
-     near rim is ~66mm closer to camera, and perspective boosts the rim enough
-     to swallow it. 1.45x restores the proportion the eye expects. Everything
-     else - the diagonal, the plateau-and-ramp profile, the width table, the
-     slot - is the OBJ's own geometry, untouched. */
-  const DG=Math.SQRT1_2, UEND=77.67, UFLAT=36.0, HZ=1.45;
-  const HMAX=17.80*HZ, BAR_U=33.0, BAR_UNDER=6.69*HZ, BLOCK_BASE=-5.03*HZ;
-  /* the diagonal that reads lower-left to upper-right: +u goes right and
-     toward the viewer, and on a cap above eye level nearer reads higher. */
+  const DG=Math.SQRT1_2;
   const P=(u,w,h)=>[ baseX+outward*h, (u+w)*DG, (u-w)*DG ];
-  const H=u=>{const t=clamp((UEND-Math.abs(u))/(UEND-UFLAT),0,1);
-              return HMAX*Math.sin(t*Math.PI/2);};
-  const W=u=>{const a=Math.abs(u);
-    for(let i=0;i<HND_W.length-1;i++){
-      const [u0,w0]=HND_W[i], [u1,w1]=HND_W[i+1];
-      if(a<=u1) return w0+(w1-w0)*(a-u0)/(u1-u0);
-    }
-    return HND_W[HND_W.length-1][1];};
-  const B=u=>Math.abs(u)<=BAR_U ? BAR_UNDER : BLOCK_BASE;
-  const N=64, US=[];
-  for(let i=0;i<=N;i++) US.push(-UEND+2*UEND*i/N);
-  const g=[], surf=[];
-  const strip=(f)=>{const rows=US.map(u=>f(u)); surf.push(quadStrip(rows));};
-  strip(u=>[P(u,-W(u),H(u)), P(u,W(u),H(u))]);       // top
-  strip(u=>[P(u,-W(u),B(u)), P(u,-W(u),H(u))]);      // near wall
-  strip(u=>[P(u, W(u),H(u)), P(u, W(u),B(u))]);      // far wall
-  strip(u=>[P(u,-W(u),B(u)), P(u,W(u),B(u))]);       // underside / slot ceiling
-  [-UEND,UEND].forEach(u=>surf.push(quadStrip([      // tip caps
-      [P(u,-W(u),B(u)),P(u,-W(u),H(u))],[P(u,W(u),B(u)),P(u,W(u),H(u))]])));
-  const curve=(f)=>{const v=[];
-    for(let i=0;i<US.length-1;i++){const a=f(US[i]),b=f(US[i+1]); v.push(...a,...b);}
-    g.push(seg3(v));};
-  curve(u=>P(u,-W(u),H(u)));                          // top face, near edge
-  curve(u=>P(u, W(u),H(u)));                          // top face, far edge
-  curve(u=>P(u,-W(u),B(u)));                          // where it meets the cap
-  curve(u=>P(u, W(u),B(u)));
-  [-UEND,UEND].forEach(u=>{                           // tips
-    g.push(seg3([...P(u,-W(u),B(u)), ...P(u,-W(u),H(u))]));
-    g.push(seg3([...P(u, W(u),B(u)), ...P(u, W(u),H(u))]));
-    g.push(seg3([...P(u,-W(u),H(u)), ...P(u, W(u),H(u))]));
+  const pos=HX.v.map(q=>P(q[0],q[1],q[2]));
+  const lv=[];
+  HX.e.forEach(([a,b])=>lv.push(...pos[a],...pos[b]));
+  const lines=seg3(lv);
+  /* occluder: the same hulls, drawn a whisker smaller so the edges above can
+     never z-fight with the surface they sit on */
+  const cen=HX.g.map(([a,b])=>{
+    let c=[0,0,0];
+    for(let i=a;i<b;i++){c[0]+=pos[i][0];c[1]+=pos[i][1];c[2]+=pos[i][2];}
+    const n=b-a; return [c[0]/n,c[1]/n,c[2]/n];
   });
-  /* cross-section ribs: seen nearly along its own width the sweep collapses
-     to a ridge, and these are what make it read as a solid handle */
-  [-66,-50,-BAR_U,0,BAR_U,50,66].forEach(u=>{
-    const w=W(u), h1=H(u), h0=B(u);
-    g.push(seg3([...P(u,-w,h0), ...P(u,-w,h1), ...P(u,-w,h1), ...P(u,w,h1),
-                 ...P(u, w,h1), ...P(u, w,h0), ...P(u,-w,h0), ...P(u,w,h0)]));
-  });
-  return {lines:merge(g), detail:seg3([]), mesh:merge(surf)};
+  const grpOf=i=>{for(let k=0;k<HX.g.length;k++) if(i>=HX.g[k][0]&&i<HX.g[k][1]) return k; return 0;};
+  const shrunk=pos.map((q,i)=>{const c=cen[grpOf(i)];
+    return [c[0]+(q[0]-c[0])*0.985, c[1]+(q[1]-c[1])*0.985, c[2]+(q[2]-c[2])*0.985];});
+  const tv=[];
+  HX.t.forEach(([a,b,c])=>tv.push(...shrunk[a],...shrunk[b],...shrunk[c]));
+  const mesh=new THREE.BufferGeometry();
+  mesh.setAttribute('position',new THREE.Float32BufferAttribute(tv,3));
+  return {lines, detail:seg3([]), mesh};
 }
+/* =====================================================================
+   THE POD — the hidden-line drawing itself.
+   Rather than rebuild the pod in 3D and hope the projection matches, this is
+   the actual HLR view taken off PP_DOCK_PACK_ASM_EMPT.STEP: outlines, sharp
+   creases and smooth (tangent) boundaries, each on its own weight, exactly as
+   in the reference image. It is drawn on a card that turns to face the camera,
+   so what you see is always that drawing — never a re-projection of it.
+   391.31 x 132.20 mm, quantised to 0.003mm.
+   Used for the three beats that show the whole pod from outside; the beats
+   that cut inside keep their own geometry.
+   ===================================================================== */
+const PODART_GEO=(()=>{
+  const dec=(o)=>{
+    const b=atob(o.p), xy=new Float32Array(o.n*2);
+    for(let i=0;i<o.n*2;i++){
+      const k=i*2, q=b.charCodeAt(k)|(b.charCodeAt(k+1)<<8);
+      xy[i]=o.lo[i%2]+q*o.sc[i%2];
+    }
+    const lb=atob(o.l), v=[]; let p=0;
+    for(let k=0;k<o.m;k++){
+      const len=lb.charCodeAt(k*2)|(lb.charCodeAt(k*2+1)<<8);
+      for(let i=0;i<len-1;i++){
+        const a=p+i, c=p+i+1;
+        v.push(xy[a*2],xy[a*2+1],0, xy[c*2],xy[c*2+1],0);
+      }
+      p+=len;
+    }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));
+    return g;
+  };
+  const shape=new THREE.Shape();
+  PODART.sil.forEach(([x,y],i)=> i? shape.lineTo(x,y) : shape.moveTo(x,y));
+  shape.closePath();
+  return {rg1:dec(PODART.rg1), sharp:dec(PODART.sharp), out:dec(PODART.out),
+          fill:new THREE.ShapeGeometry(shape)};
+})();
+const PODART_CARDS=[];
+function podInstance(lineMatRef,paperMatRef,order,roll){
+  const card=new THREE.Group();
+  card.userData.roll=roll||0;
+  const g=new THREE.Group(); card.add(g);
+  g.add(L(PODART_GEO.rg1,   lineMatRef, order));
+  g.add(L(PODART_GEO.sharp, lineMatRef, order));
+  g.add(L(PODART_GEO.out,   lineMatRef, order));
+  const f=new THREE.Mesh(PODART_GEO.fill,paperMatRef);
+  f.position.z=-0.5; f.renderOrder=order-1; g.add(f);
+  card.userData.inner=g;
+  PODART_CARDS.push(card);
+  return card;
+}
+/* the card turns to face the camera, so the drawing is never foreshortened */
+function facePodCards(){
+  PODART_CARDS.forEach(c=>{
+    c.getWorldQuaternion(_wq).invert();
+    c.userData.inner.quaternion.copy(_wq).multiply(camera.quaternion);
+    if(c.userData.roll) c.userData.inner.rotateZ(c.userData.roll);   // stand it up
+  });
+}
+const _wq=new THREE.Quaternion();
 /* --- HANDLE: digitised from the STEP file --- */
 const handleMat=lineMat();
 const handlePaper=paperMat({opacity:0});
@@ -194,11 +228,9 @@ const capDetailMat=lineMat({opacity:0,depthTest:false});
   /* no recess outline: the handle itself says which end is the top, and a
      45-degree pocket streaks diagonal lines right across the cap */
 
-  const HB=buildTop(D.collarL[0],-1);          // crowned cap, handle recessed into it
-  g.push(HB.lines);
+  /* the OBJ shell carries the handle now, at its own station; drawing the
+     parametric one too put a second handle 20mm further out */
   pod.add(L(merge(g),handleMat,3));
-  pod.add(L(HB.detail,capDetailMat,6));
-  pod.add(P(HB.mesh,handlePaper));
 }
 /* --- CONNECTOR: PP_XCONN_ENC_F V1.5, built from its own STEP ---
    77 x 77 plate on R13 corners, 14mm deep, with all 80 drilled features at
@@ -237,6 +269,8 @@ const connMat=lineMat({opacity:0}), connPaper=paperMat({opacity:0});
    Ø21.0 on a 22.6 pitch (measured): 1.6mm clearance, tops never touch.
    ===================================================================== */
 /* ---- 1. NMC 21700: can, crimp, vent cap, spiral jelly roll ---- */
+const objPodGroup=podInstance(objPodMat,objPodPaper,3); pod.add(objPodGroup);
+
 const cellGroup=new THREE.Group();
 const cellLineMats=[],cellPaperMats=[],cellMeshes=[];
 {
@@ -278,9 +312,11 @@ const HCELLS=[];
   for(let i=0;i<4;i++) for(let j=0;j<5;j++) for(let k=0;k<3;k++)
     HCELLS.push([-105+i*70, (j-2)*22.6, 5+(k-1)*22.6]);
   const cell=[];
-  cell.push(loopGeom(circPts(r,40),yz(-hl)));                 // the end we look at
-  cell.push(loopGeom(circPts(9.4,32),yz(-hl+0.35)));          // crimp ring
-  cell.push(loopGeom(circPts(3.6,20),yz(-hl+0.35)));          // terminal
+  /* Just the plain outer rim on the end we look at — no crimp-ring/terminal
+     circles here. The camera looks straight down this row, unlike the
+     upright cells seen at an angle, so those two smaller loops used to read
+     as a grid of stray dots rather than the terminal detail they are. */
+  cell.push(loopGeom(circPts(r,40),yz(-hl)));
   cell.push(loopGeom(circPts(r,40),yz(hl)));
   cell.push(loopGeom(circPts(D.cell.step/2,36),yz(hl-0.9)));
   [[r,0],[-r,0],[0,r],[0,-r]].forEach(([u,v])=>
@@ -899,14 +935,17 @@ function drawPhone(p){
    Same CAD geometry, stood on end: handle up, connector down.
    ===================================================================== */
 const vpod=new THREE.Group(); vpod.visible=false; scene.add(vpod);
-const vpodInner=new THREE.Group(); vpodInner.rotation.z=-Math.PI/2; vpod.add(vpodInner);
+/* the card carries its own upright roll now, so this group stays square */
+const vpodInner=new THREE.Group(); vpod.add(vpodInner);
 const vShellMat=lineMat({opacity:0}), vPaper=paperMat({opacity:0});
 const vCapDetailMat=lineMat({opacity:0,depthTest:false});
 {
   const tOcc=extrude(132.2,132.2,26.6,D.tubeX[1]-D.tubeX[0]); tOcc.rotateY(Math.PI/2); tOcc.translate(D.tubeX[0],0,0);
   const cL=extrude(137.2,137.2,30.6,D.collarL[1]-(-199.3)); cL.rotateY(Math.PI/2); cL.translate(-199.3,0,0);
   const cR=extrude(137.2,137.2,30.6,D.collarRt[1]-D.collarRt[0]); cR.rotateY(Math.PI/2); cR.translate(D.collarRt[0],0,0);
-  [tOcc,cL,cR].forEach(g=>vpodInner.add(P(g,vPaper)));
+  /* the OBJ shell brings its own occluders at the mesh's real sections; these
+     parametric ones are wider and would hide it completely */
+  void tOcc; void cL; void cR;
   const g=[];
   g.push(tubeXg(D.tubeX[0],D.tubeX[1],D.tubeSize,D.tubeR));
   g.push(tubeXg(D.collarL[0],D.collarL[1],D.collarSize,D.collarR));
@@ -918,8 +957,7 @@ const vCapDetailMat=lineMat({opacity:0,depthTest:false});
   /* no recess outline: the handle itself says which end is the top, and a
      45-degree pocket streaks diagonal lines right across the cap */
 
-  const VHB=buildTop(D.collarL[0],-1);         // same cap, so the top reads when upright
-  g.push(VHB.lines);
+
   /* connector face */
   const fx=199.7;
   g.push(loopGeom(rrPts(D.facePlate.size,D.facePlate.size,D.facePlate.r),yz(D.facePlate.x)));
@@ -936,9 +974,8 @@ const vCapDetailMat=lineMat({opacity:0,depthTest:false});
   g.push(loopGeom(circPts(2.5),yz(fx)));
   for(let i=0;i<8;i++){const a2=i/8*Math.PI*2;         // 8-pin data cluster
     g.push(loopGeom(circPts(2.2),(u,v)=>[fx,8.5*Math.sin(a2)+v,8.5*Math.cos(a2)+u]));}
-  vpodInner.add(L(merge(g),vShellMat,3));
-  vpodInner.add(L(VHB.detail,vCapDetailMat,6));
-  vpodInner.add(P(VHB.mesh,vPaper));
+  /* the whole pod, seen from outside: use the OBJ mesh itself */
+  vpodInner.add(podInstance(vShellMat,vPaper,3,-Math.PI/2));   // handle uppermost
 }
 /* Wireless link: broadcast ripples leaving the pod's near face and washing
    toward the phone. Arcs only — they live in the air between the two devices
@@ -1081,7 +1118,11 @@ let lastPad="",lastPh="",fontsReady=false;
  * opacity is how a mesh ends up invisible and still occluding: a fill that has
  * receded to context, or has only started fading in, punches a hole in the
  * drawing and the lines behind it disappear for no reason the viewer can see.
- * Every paper in the film goes through here so that cannot happen again.
+ * It is used for the two devices, which arrive whole. The pod's own fills are
+ * choreographed beat by beat instead, because Act I deliberately holds some of
+ * them opaque while their outlines drop back to context: seventy cans standing
+ * across the pack read as a solid wall in the close-ups, which is exactly what
+ * hides the far end of the pod behind them.
  */
 function papered(m,opacity){
   m.opacity=opacity;
@@ -1121,6 +1162,7 @@ const _v=new THREE.Vector3();
 
 function update(t){
   evalCam(t);
+  facePodCards();      // keep the pod drawing square to the lens
   const tB=toB(t);                       // Acts II-IV keep their original clock
   const W=(a,b)=>win(tB,a*S,b*S);
   const act4 = tB>=0.800;   /* swapped at the whiteout floor — invisible */
@@ -1132,18 +1174,17 @@ function update(t){
   pod.visible=podFade>0.001;
   {
     /* casing: a solid drawing at the top view, then held open so the
-       internals can be read for the rest of the act. It stays shut through
-       the balance beat, which is about the outside of the pod and nothing
-       else, and dissolves on the handoff after it. */
-    const opened=smoother(win(t,0.048,0.078));
-    papered(podPaper,(1-opened)*podFade);
+       internals can be read for the rest of the act */
+    const opened=smoother(win(t,0.030,0.062));
+    /* the OBJ shell's own occluder makes the pod solid at the open; the
+       parametric one is larger and would hide the OBJ's lines entirely */
+    podPaper.opacity=0;
+    podPaper.depthWrite=false;
     shellMat.opacity=lerp(1,0.11,opened)*podFade;
     handleMat.opacity=shellMat.opacity;
     capDetailMat.opacity=handleMat.opacity;
-    /* The handle stands at the far end of the pod, so in any shot taken down
-       the length of the pack its fill is the first thing between the lens and
-       the far edge. It fades with the casing, not faster. */
-    papered(handlePaper,handleMat.opacity*podFade);
+    handlePaper.opacity=Math.min(1,handleMat.opacity*4)*podFade;
+    handlePaper.depthWrite=handleMat.opacity>0.02;
 
     /* ---- chemistry: NMC in, LFP, solid-state, back to NMC ---- */
     const stack=win(t,0.058,0.132);                 // the first fill
@@ -1167,24 +1208,26 @@ function update(t){
                             wide*0.6);
     /* casing thins further during the close-ups so nothing crowds the gap */
     const closeUp=Math.max(smoother(win(t,0.264,0.292))*(1-smoother(win(t,0.536,0.556))),0);
-    shellMat.opacity=lerp(1,lerp(0.11,0.032,closeUp),opened)*podFade;
+    /* outside -> the OBJ mesh; inside -> the parametric ghost shell */
+    objPodMat.opacity=(1-opened)*podFade;
+    objPodPaper.opacity=(1-opened)*podFade;
+    objPodPaper.depthWrite=objPodMat.opacity>0.02;
+    objPodGroup.visible=objPodMat.opacity>0.002;
+    shellMat.opacity=lerp(0,lerp(0.11,0.032,closeUp),opened)*podFade;
     handleMat.opacity=shellMat.opacity;
     const cellVis=fCells*podFade;
 
-    /* Fill and line recede together. Seventy opaque cans standing across the
-       pack are a wall: left solid while their own outlines drop to context
-       they hide the far end of the pod from every shot taken down its length,
-       which is most of the close-ups. */
     for(let i=0;i<70;i++){
       const st=i/70*0.66, k=easeOut(win(stack,st,st+0.34));
       const a=k*nmcA*cellVis;
       cellLineMats[i].opacity=a;
-      papered(cellPaperMats[i],a);
+      cellPaperMats[i].opacity=k*nmcA*podFade;
+      cellPaperMats[i].depthWrite=k*nmcA>0.5;
       cellMeshes[i].position.y=cellMeshes[i].userData.home-(1-k)*46;
       cellMeshes[i].visible=a>0.002;
     }
     horizMat.opacity=horizA*cellVis; horizGroup.visible=horizMat.opacity>0.002;
-    papered(horizPaper,horizA*cellVis);
+    horizPaper.opacity=horizA*podFade; horizPaper.depthWrite=horizA>0.5;
 
     const kH=easeOut(win(t,0.100,0.128));
     holder.m.opacity=kH*nmcA*fCells*podFade;
@@ -1195,12 +1238,18 @@ function update(t){
 
     /* ---- BMS: the built board, then two alternates ---- */
     const bmsIn=easeOut(win(t,0.264,0.292));
-    /* sequenced, never crossfaded — the board stays put while the parts move */
-    const p1out=smoother(win(t,0.300,0.316)), p2in =smoother(win(t,0.314,0.330));
-    const p2out=smoother(win(t,0.344,0.360)), p1in =smoother(win(t,0.358,0.374));
+    /* sequenced, never crossfaded — the board stays put while the parts move.
+       The full original->alternate->original cycle has to be finished before
+       CAM1's arc to the connector face starts at t=0.350 (below), or the
+       camera swings away mid-swap and the BMS is never actually resting in
+       focus — so this cycle is compressed to land well inside that window,
+       finishing at 0.335 rather than the frame-count's natural 0.374. */
+    const p1out=smoother(win(t,0.300,0.308)), p2in =smoother(win(t,0.307,0.314));
+    const p2out=smoother(win(t,0.321,0.328)), p1in =smoother(win(t,0.327,0.335));
     const wv=[ clamp((1-p1out)+p1in,0,1), p2in*(1-p2out) ];
     bmsFrameMat.opacity=bmsIn*fBoard*podFade;
-    papered(bmsFramePaper,bmsIn*fBoard*podFade);
+    bmsFramePaper.opacity=bmsIn*podFade;
+    bmsFramePaper.depthWrite=bmsIn>0.5;
     BMS_VARIANTS.forEach((bv,i)=>{
       const a=clamp(wv[i],0,1);
       bv.m.opacity=a*bmsIn*fBoard*podFade;
@@ -1218,12 +1267,13 @@ function update(t){
 
     /* ---- connector ---- */
     connMat.opacity=fConn*podFade;
-    papered(connPaper,Math.min(1,fConn*3)*podFade);
+    connPaper.opacity=Math.min(1,fConn*3)*podFade;
+    connPaper.depthWrite=fConn>0.3;
 
     /* ---- IoT board ---- */
     const iotIn=easeOut(win(t,0.456,0.482));
     iotMat.opacity=fIoT*podFade;
-    papered(iotPaper,iotIn*fIoT*podFade);
+    iotPaper.opacity=iotIn*podFade; iotPaper.depthWrite=iotIn>0.5;
     iotGroup.visible=iotMat.opacity>0.002;
 
     /* a single unhurried turn for the wide shot, ending square for the morph */
@@ -1309,7 +1359,7 @@ function update(t){
                           :lerp(-0.42,0,smoother(win(tB,0.604,0.690))), 0);
   vShellMat.opacity=vpVis;
   vCapDetailMat.opacity=vpVis;
-  papered(vPaper,Math.min(1,vpVis*ARRIVE));
+  vPaper.opacity=Math.min(1,vpVis*3.5); vPaper.depthWrite=vpVis>0.02;
   vpod.visible=vpVis>0.001;
   const telK=win(tB,0.702,0.736)*(1-win(tB,0.768,0.788));
   telemetry.visible=telK>0.002;
