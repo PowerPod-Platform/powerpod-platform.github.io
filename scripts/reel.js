@@ -16,13 +16,16 @@
 
   var reel = document.querySelector('.reel');
   var stage = document.querySelector('.reel__stage');
-  var metric = document.querySelector('.reel__metric');
+  var metric = document.querySelector('.reel__metric:not(.reel__metric--hero)');
+  var heroMetric = document.querySelector('.reel__metric--hero');
   if (!reel || !stage || !metric) return;
 
   document.documentElement.classList.add('reel-scrub');
 
   var targets = [];
   var span = 0;
+  var heroSpan = 0;
+  var lead = 0;
   var overlap = 0;
 
   function measure() {
@@ -34,17 +37,23 @@
     // pixels, which rounded a 44.8px overlap to 45 and left this driver a
     // fraction of a percent out of step with the native one.
     span = metric.getBoundingClientRect().height;
+    // The hero owns a shorter span than everybody else (--hero-span in
+    // site.css), and every chapter after it is pulled up by the difference.
+    // Read rather than assumed, exactly as --chapter-span is.
+    heroSpan = heroMetric ? heroMetric.getBoundingClientRect().height : span;
+    lead = heroSpan - span;
     var chapters = document.querySelectorAll('.chapter');
     overlap = (reel.getBoundingClientRect().height
-               - stage.getBoundingClientRect().height) - chapters.length * span;
+               - stage.getBoundingClientRect().height)
+              - chapters.length * span - lead;
 
     targets = [];
     chapters.forEach(function (chapter) {
       var i = parseFloat(getComputedStyle(chapter).getPropertyValue('--i'));
       var hero = chapter.classList.contains('chapter--hero');
       // Mirrors the animation-range declarations in site.css.
-      var start = hero ? 0 : i * span - overlap;
-      var end = hero ? span + overlap : (i + 1) * span + overlap;
+      var start = hero ? 0 : i * span + lead - overlap;
+      var end = hero ? heroSpan + overlap : (i + 1) * span + lead + overlap;
 
       var els = [chapter].concat(
         Array.prototype.slice.call(

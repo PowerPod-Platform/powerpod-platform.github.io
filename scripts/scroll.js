@@ -18,14 +18,13 @@
  * browser — drives all of it.
  *
  * THE FILM FEED reads that same scroll and hands scripts/cinema.js a frame.
- * Position is measured in CHAPTER UNITS:
- *
- *     u = (scrollY - reel.top) / chapter-span        0 .. chapter count
- *
- * so u = 4.5 is the middle of chapter 4 no matter how tall a chapter is or
- * what the viewport is doing. The span is read off the .reel__metric probe,
- * exactly as scripts/reel.js reads it, so the svh arithmetic stays in CSS and
- * the two drivers cannot drift apart.
+ * Position is measured in CHAPTER UNITS by uAtY() below: the hero owns u 0..1
+ * across its own shorter --hero-span, and every chapter after it owns one unit
+ * of --chapter-span. So u = 4.5 is the middle of chapter 4 no matter how tall
+ * a chapter is, what the viewport is doing, or that the first one is now less
+ * than half the length of the rest. Both spans are read off the .reel__metric
+ * probes, exactly as scripts/reel.js reads them, so the svh arithmetic stays
+ * in CSS and the two drivers cannot drift apart.
  *
  * ANCHORS then maps u to the film's own clock. That indirection is the whole
  * trick: scripts/cinema.js keeps its original, heavily tuned choreography on
@@ -43,7 +42,8 @@
   var html = document.documentElement;
   var reel = document.querySelector('.reel');
   var stage = document.querySelector('.reel__stage');
-  var metric = document.querySelector('.reel__metric');
+  var metric = document.querySelector('.reel__metric:not(.reel__metric--hero)');
+  var heroMetric = document.querySelector('.reel__metric--hero');
   var footer = document.querySelector('.closing');
   var host = document.getElementById('film');
   if (!reel || !stage || !metric) return;
@@ -172,13 +172,31 @@
   /* =====================================================================
      GEOMETRY
      ===================================================================== */
-  var span = 1, count = 1, reelTop = 0, pinned = false;
+  var span = 1, heroSpan = 1, count = 1, reelTop = 0, pinned = false;
+
+  /* CHAPTER UNITS, with the hero's shorter span folded in.
+     The hero owns u 0..1 across --hero-span; every chapter after it owns one
+     unit of --chapter-span, starting where the hero ends. Keeping u in whole
+     chapters either side of that seam is what lets ANCHORS, dimAt, liftAt and
+     the whole film map stay exactly as authored — none of them can tell that
+     the first chapter is now shorter in pixels than the rest. */
+  function uAtY(y) {
+    var d = y - reelTop;
+    return d <= heroSpan ? d / heroSpan : 1 + (d - heroSpan) / span;
+  }
+
+  function yAtU(u) {
+    return reelTop + (u <= 1 ? u * heroSpan : heroSpan + (u - 1) * span);
+  }
 
   function measure() {
     // getBoundingClientRect, not offsetHeight: the latter rounds to whole
     // pixels, which is enough to walk the film out of step with the copy over
     // thirteen chapters.
     span = Math.max(1, metric.getBoundingClientRect().height);
+    heroSpan = heroMetric
+      ? Math.max(1, heroMetric.getBoundingClientRect().height)
+      : span;
     count = Math.max(1, document.querySelectorAll('.chapter').length);
     reelTop = reel.offsetTop;
     // The stage is only sticky in the two layouts where chapters stack in one
@@ -213,13 +231,24 @@
      that swing, with the BMS long gone from frame. 0.64 (t≈0.342) rests just
      after the board's own swap cycle finishes (compressed to land by 0.335,
      see scripts/cinema.js) and comfortably before the camera ever moves. */
-  var HERO_REST = 0.5;
+  /* Zero, where every other chapter rests deep in its own hold.
+     This is where the page LANDS, and any value above zero buys a shorter
+     journey down to chapter 1 by leaving exactly as many pixels of runway
+     ABOVE the landing point — runway showing the same motionless wordmark,
+     that nobody will ever scroll up into. Shortening --hero-span instead
+     (styles/site.css) buys the same distance without spending anything, so
+     that is where it is bought. Landing at zero also means the page opens
+     exactly where the browser put it, with no corrective jump after paint.
+     Resting at 0.5 was safe when hero-life held opacity to 88%; against a
+     departure that now starts at 50% it would land the visitor precisely on
+     the frame the wordmark begins to leave. */
+  var HERO_REST = 0;
   var REST = 0.86;
   var REST_OVERRIDE = { 5: 0.64 };
 
   function settleY(page) {
     var f = page <= 0 ? HERO_REST : (REST_OVERRIDE[page] || REST);
-    return reelTop + (page + f) * span;
+    return yAtU(page + f);
   }
 
   function nearestPage(y) {
@@ -293,6 +322,7 @@
   var page = 0;           // the chapter the visitor is on
   var busy = false;       // a transition is playing
   var beatMode = false;   // the current transition is a bent (arrive+content) one
+  var calm = false;       // ...or an unasked-for one (see THE ASSIST)
   var released = false;   // handed the scroll back for the footer
   var pendingRelease = false;
   var fromY = 0, bendY = 0, bendV = 0, toY = 0, toPage = 0, t0 = 0, dur = 0, t1 = 0, t2 = 0;
@@ -313,6 +343,15 @@
 
   function easeInOut(x) {
     return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  }
+
+  /* Quintic smootherstep — zero velocity AND zero acceleration at both ends,
+     where easeInOut above only gives zero velocity. Reserved for THE ASSIST,
+     which is the one movement on this page nobody asked for: it has to begin
+     without a perceptible start, which means the visitor must not be able to
+     name the frame it began on. */
+  function quintic(x) {
+    return x * x * x * (x * (x * 6 - 15) + 10);
   }
 
   /* A cubic Hermite segment: p0/p1 the two ends, v0/v1 their velocities (in
@@ -338,6 +377,7 @@
     toY = y;
     toPage = target;
     beatMode = false;
+    calm = false;
     dur = clamp(Math.abs(toY - fromY) / span * PACE, MIN_MS, MAX_MS);
     t0 = performance.now();
     busy = true;
@@ -360,7 +400,7 @@
   function glideBeat(target) {
     var b = BEAT[target];
     fromY = window.scrollY;
-    bendY = reelTop + (target + b[0]) * span;
+    bendY = yAtU(target + b[0]);
     toY = settleY(target);
     toPage = target;
     t1 = b[1] || T1_DEFAULT;
@@ -370,6 +410,7 @@
     t0 = performance.now();
     busy = true;
     beatMode = true;
+    calm = false;
     wake();
   }
 
@@ -407,6 +448,9 @@
      ===================================================================== */
   var running = false;
   var quietUntil = 0;
+  /* Whether anything of ours was driving the scroll on the previous frame, so
+     the frame it stops can be recognised. See the note beside its use below. */
+  var wasMoving = false;
 
   function frame(now) {
     if (busy) {
@@ -422,7 +466,7 @@
         }
       } else {
         var k = dur > 0 ? clamp(elapsed / dur, 0, 1) : 1;
-        y = fromY + (toY - fromY) * easeInOut(k);
+        y = fromY + (toY - fromY) * (calm ? quintic(k) : easeInOut(k));
       }
       jumpTo(y);
       if (elapsed >= dur) {
@@ -430,6 +474,7 @@
         page = toPage;
         busy = false;
         beatMode = false;
+        calm = false;
         if (pendingRelease) { released = true; pendingRelease = false; }
       }
     } else if (wheelTarget !== null) {
@@ -441,13 +486,53 @@
       var dt = lastFrameT ? clamp(now - lastFrameT, 0, 48) : 16;
       var cy = window.scrollY;
       var factor = 1 - Math.exp(-dt / WHEEL_TAU);
-      var ny = cy + (wheelTarget - cy) * factor;
-      if (Math.abs(wheelTarget - ny) < 0.5) { ny = wheelTarget; wheelTarget = null; }
+      var gap = wheelTarget - cy;
+      var ny;
+      /* TERMINATION IS ON THE STEP, NOT ON THE GAP, and it has to be: an
+         exponential approach makes the step arbitrarily small, and a step
+         smaller than the scroll offset's own granularity moves nothing at
+         all. `window.scrollY` then reads back unchanged, the gap is the same
+         next frame, the same sub-pixel step is computed again, and the coast
+         never terminates — leaving wheelTarget non-null forever, this rAF
+         loop spinning at full rate redrawing the film for the life of the
+         page, and (since the loop only ever ends when wheelTarget clears)
+         everything downstream of "the page has come to rest" unreachable.
+         Measured stuck 5px short with a 0.4px step, still running frames
+         three seconds after the gesture ended.
+
+         So: land it as soon as either the remaining distance or the step
+         that would be taken drops below a pixel, and never take a step
+         smaller than a pixel while further away than that. Both halves are
+         needed — the first ends the coast, the second guarantees the first
+         is reachable no matter how the browser rounds. The visible cost is
+         the last pixel of an exponential tail, which is nothing. */
+      if (Math.abs(gap) < 1) {
+        ny = wheelTarget;
+        wheelTarget = null;
+      } else {
+        var stepPx = gap * factor;
+        if (Math.abs(stepPx) < 1) stepPx = gap > 0 ? 1 : -1;
+        ny = cy + stepPx;
+      }
       jumpTo(ny);
     }
     lastFrameT = now;
 
-    var v = (window.scrollY - reelTop) / span;
+    /* THE MOMENT THE PAGE COMES TO REST under its own machinery, which is the
+       only place that reliably knows it.
+       The scroll listener arms THE ASSIST's dwell too, and for a native touch
+       scroll that is enough — the browser fires a last scroll event with
+       nothing of ours still running. A wheel coast does not: its final write
+       lands within half a pixel of where the page already is, and
+       window.scrollTo() to a position the page is already at fires no scroll
+       event at all. So the one event that would have found wheelTarget back
+       to null never arrives, and every trackpad and mouse gesture used to end
+       with the dwell unarmed and the assist unable to run. */
+    var moving = busy || wheelTarget !== null;
+    if (wasMoving && !moving) { assistArmed = true; armDwell(); }
+    wasMoving = moving;
+
+    var v = uAtY(window.scrollY);
     var u = clamp(Number.isFinite(v) ? v : 0, 0, count);
     markIndex(u);
 
@@ -496,6 +581,7 @@
     // ctrl+wheel is zoom, on a trackpad and on a mouse alike. It is not a
     // scroll and it is not ours to take.
     if (e.ctrlKey) return;
+    cancelAssist();
     if (busy) { busy = false; beatMode = false; }
     var d = e.deltaY;
     if (e.deltaMode === 1) d *= 16;        // lines
@@ -507,6 +593,7 @@
   }, { passive: false });
 
   addEventListener('touchstart', function (e) {
+    cancelAssist();
     if (engaged() && busy) { busy = false; beatMode = false; }
   }, { passive: true });
 
@@ -532,7 +619,10 @@
     } else return;
 
     e.preventDefault();
-    if (busy) return;
+    /* An assist is a suggestion and yields to a real request; a deliberate
+       transition owns the scroll until it has finished playing. */
+    if (busy && !calm) return;
+    cancelAssist();
     if (to >= 0) goTo(to); else step(dir);
   });
 
@@ -559,44 +649,171 @@
   addEventListener('scroll', function () {
     wake();
     trackPosition();
+
+    var y = window.scrollY;
+    if (y !== lastScrollY) {
+      travelDir = y > lastScrollY ? 1 : -1;
+      lastScrollY = y;
+    }
+    /* Not while the page is moving itself. Every jumpTo() in this file fires
+       scroll events too, and arming from those would let an assist re-arm off
+       its own motion and chase its own tail. The last write of a wheel coast
+       or a glide lands with both flags already clear, which is what re-arms
+       the dwell honestly. */
+    if (busy || wheelTarget !== null) return;
+    assistArmed = true;
+    armDwell();
   }, { passive: true });
 
   /* =====================================================================
-     LIFECYCLE
-     ===================================================================== */
-  /* Put the scroll back on a page without animating it.
+     THE ASSIST
 
-     `keep` is the difference between a reflow and an arrival. A resize changes
-     what a chapter is worth in pixels, so the page the visitor is reading has
-     to be carried across and re-measured; asking where they are afterwards
-     would read the old position against the new geometry and hand back the
-     wrong chapter. A restored or freshly loaded position has no page behind
-     it yet, so there the scroll is the only thing to go on. */
-  function snap(keep) {
-    busy = false;                       // a reflow outranks a transition
-    beatMode = false;
-    pendingRelease = false;
-    if (!pinned) return;
-    var y = window.scrollY;
-    if (!keep) {
-      released = y > releaseLine();
-      page = nearestPage(y);
-    }
-    if (!released) jumpTo(settleY(page));
+     This is not a snap, and the distinction is the whole design. A snap fires
+     at the end of every gesture and always pulls onto a grid — the one thing
+     the input model above deliberately refuses, because stopping between two
+     chapters is somewhere the visitor is allowed to be and a scroll that ends
+     where the finger left it is the promise being kept.
+
+     This is a different observation. SOME places between two chapters are not
+     a position at all, they are a half-drawn frame: the body copy nine per
+     cent revealed, the title still oversized and mid-settle, the film a third
+     of the way through a beat with the cells neither stacked nor laid down.
+     Nobody chooses to stop there. They stop there because something took them
+     away, or because a thumb ran out of glass. Left alone the page simply sits
+     in that half-state for as long as they look at it.
+
+     So when the visitor has genuinely STOPPED — not slowed, not coasting,
+     stopped, for long enough that no gesture can still be in flight — and
+     where they stopped is one of those half-states, the page finishes the
+     beat for them. Slowly. Slower than any transition it plays of its own
+     accord, because this one was not requested and therefore has to be easy
+     to ignore, easy to interrupt, and impossible to trip over.
+
+     Five things keep it out of the way:
+       · It only ever starts from a standstill, so it can never fight a
+         gesture, at any speed.
+       · It only starts from an unresolved position. Anywhere inside a
+         chapter's own hold — which is most of the reel — is left completely
+         alone and always will be.
+       · It runs once per stop. Ignore it, or interrupt it, and it does not
+         return until the visitor has moved the page themselves again.
+       · Wheel, touch and keys all cancel it mid-flight, and a key press is
+         acted on rather than swallowed.
+       · It finishes what was already in motion: which way it goes is decided
+         by which way the visitor was already going.
+     ===================================================================== */
+
+  /* The hold, read straight off chapter-life in styles/site.css: the copy is
+     fully arrived at 30% and starts leaving at 88%. Between those two the
+     frame is finished and is never touched. */
+  var HOLD_LO = 0.30, HOLD_HI = 0.88;
+  /* The hero has no arrival to complete, so everything before its own
+     departure is already settled. hero-life leaves at 60%; a little margin
+     under that keeps the assist from starting one frame into the fade. */
+  var HERO_HOLD_HI = 0.45;
+  /* Long enough that no gesture can still be running. An iOS momentum fling
+     fires scroll events until it stops, so this only has to outlast the gap
+     between two of them — the rest of it is deliberate: a pause this long is
+     a visitor who has stopped, not one who is between flicks. */
+  var DWELL_MS = 650;
+  /* Per chapter-unit, and deliberately slower than THE BEAT's content phase
+     (2400ms across 0.56 units, about 4300ms/unit). Tuned by feel on a device;
+     these three numbers are the ones to move if it wants to be calmer still. */
+  var CALM_PACE = 5200, CALM_MIN = 800, CALM_MAX = 4200;
+  /* How heavily a move against the direction of travel is penalised. High on
+     purpose: continuing the way the visitor was already going is almost always
+     what finishing the beat means. The exception a large multiplier still lets
+     through is the one that matters — stopping a hair past the end of a hold,
+     where going back is a tenth of the distance of going on. */
+  var TRAVEL_BIAS = 4;
+
+  /* Interrupting an assist is a refusal, and an offer repeated straight after
+     it was refused is precisely how help turns into interference. So a cancel
+     that actually caught one in flight suppresses the next one until the
+     visitor has moved the page a real distance under their own power — about
+     a tenth of a chapter, roughly a couple of wheel notches. A nudge to fend
+     the assist off is not a new stop and must not be read as one.
+
+     Only an interruption counts. Merely disarming a dwell that had not fired
+     yet is not a refusal of anything, so it suppresses nothing. */
+  var REARM_UNITS = 0.10;
+
+  var assistArmed = false, dwellTimer = 0, travelDir = 1, lastScrollY = 0;
+  var refused = false, refusedAtU = 0;
+
+  /* A resolved position: one a visitor could have chosen on purpose. */
+  function settledAt(u) {
+    var at = Math.floor(u);
+    var frac = u - at;
+    if (at <= 0) return frac <= HERO_HOLD_HI;
+    /* The last chapter arrives and then holds to the end rather than
+       departing (chapter-arrive-hold), so it has no late half-state. */
+    if (at >= count - 1) return frac >= HOLD_LO;
+    return frac >= HOLD_LO && frac <= HOLD_HI;
   }
 
-  // A restored scroll position is a position the pager never chose, and the
-  // browser restores it after this file runs. Owning it here means the reel
-  // always opens on a page rather than half way through a handoff.
-  try { history.scrollRestoration = 'manual'; } catch (e) {}
+  function glideCalm(y, target) {
+    fromY = window.scrollY;
+    toY = y;
+    toPage = target;
+    beatMode = false;
+    calm = true;
+    dur = clamp(Math.abs(uAtY(toY) - uAtY(fromY)) * CALM_PACE,
+                CALM_MIN, CALM_MAX);
+    t0 = performance.now();
+    busy = true;
+    wake();
+  }
 
-  measure();
-  snap();
-  wake();
+  function considerAssist() {
+    if (!assistArmed) return;
+    assistArmed = false;                 // once per stop, whatever happens next
+    if (!pinned || released || busy || wheelTarget !== null) return;
 
-  // scripts/reel.js is loaded after this file and only then switches on the
-  // sticky layout it needs, so the first real measurement is the next frame's.
-  requestAnimationFrame(function () { measure(); snap(); wake(); });
+    var u = uAtY(window.scrollY);
+    if (!(u > 0) || u >= count) return;  // above the reel, or out into the footer
+    if (settledAt(u)) return;            // already a finished frame: leave it alone
+
+    var at = clamp(Math.floor(u), 0, count - 1);
+    var frac = u - Math.floor(u);
+    /* Which beat is half-played. Below the hold it is this chapter's arrival,
+       above it this chapter's departure, and each has an obvious completion
+       in either direction. */
+    var fwd = clamp(frac < HOLD_LO ? at : at + 1, 0, count - 1);
+    var back = clamp(frac < HOLD_LO ? at - 1 : at, 0, count - 1);
+
+    var yF = settleY(fwd), yB = settleY(back);
+    var dF = Math.abs(uAtY(yF) - u), dB = Math.abs(uAtY(yB) - u);
+    if (travelDir < 0) dF *= TRAVEL_BIAS; else dB *= TRAVEL_BIAS;
+
+    var y = dF <= dB ? yF : yB;
+    var to = dF <= dB ? fwd : back;
+    if (Math.abs(y - window.scrollY) < 2) return;
+    glideCalm(y, to);
+  }
+
+  function armDwell() {
+    if (refused) {
+      if (Math.abs(uAtY(window.scrollY) - refusedAtU) < REARM_UNITS) return;
+      refused = false;
+    }
+    clearTimeout(dwellTimer);
+    dwellTimer = setTimeout(considerAssist, DWELL_MS);
+  }
+
+  /* Called by every input the visitor drives directly. Disarms the pending
+     consideration and abandons an assist already in flight — but never
+     touches a glide the visitor actually asked for. */
+  function cancelAssist() {
+    clearTimeout(dwellTimer);
+    assistArmed = false;
+    if (busy && calm) {
+      busy = false;
+      calm = false;
+      refused = true;
+      refusedAtU = uAtY(window.scrollY);
+    }
+  }
 
   /* =====================================================================
      THE STATION INDEX
@@ -656,6 +873,7 @@
       /* A tap from inside the footer is a request to come back into the reel,
          which is the one place the pager has deliberately let go of. */
       released = false;
+      cancelAssist();
       /* Only the next chapter earns the bent glide. Its fast leg is timed for
          one chapter's travel, and asking it to carry ten would spend that
          900ms crossing most of the film. Everything else takes the plain
@@ -664,6 +882,45 @@
       else goTo(to);
     });
   }
+
+  /* =====================================================================
+     LIFECYCLE
+     ===================================================================== */
+  /* Put the scroll back on a page without animating it.
+
+     `keep` is the difference between a reflow and an arrival. A resize changes
+     what a chapter is worth in pixels, so the page the visitor is reading has
+     to be carried across and re-measured; asking where they are afterwards
+     would read the old position against the new geometry and hand back the
+     wrong chapter. A restored or freshly loaded position has no page behind
+     it yet, so there the scroll is the only thing to go on. */
+  function snap(keep) {
+    cancelAssist();
+    busy = false;                       // a reflow outranks a transition
+    beatMode = false;
+    calm = false;
+    pendingRelease = false;
+    if (!pinned) return;
+    var y = window.scrollY;
+    if (!keep) {
+      released = y > releaseLine();
+      page = nearestPage(y);
+    }
+    if (!released) jumpTo(settleY(page));
+  }
+
+  // A restored scroll position is a position the pager never chose, and the
+  // browser restores it after this file runs. Owning it here means the reel
+  // always opens on a page rather than half way through a handoff.
+  try { history.scrollRestoration = 'manual'; } catch (e) {}
+
+  measure();
+  snap();
+  wake();
+
+  // scripts/reel.js is loaded after this file and only then switches on the
+  // sticky layout it needs, so the first real measurement is the next frame's.
+  requestAnimationFrame(function () { measure(); snap(); wake(); });
 
   /* =====================================================================
      RESIZE, AND THE MOBILE URL BAR

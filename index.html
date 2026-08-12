@@ -57,8 +57,12 @@
 
   <main class="reel" style="--chapter-count: 13">
     <!-- Lets the scroll controller and the fallback scrubber measure
-         --chapter-span in px without duplicating the number in JS. -->
+         --chapter-span and --hero-span in px without duplicating either
+         number in JS. Order matters: both drivers select the chapter probe as
+         the one that is NOT the hero, but keeping it first also means a
+         careless `.reel__metric` still finds the right one. -->
     <div class="reel__metric" aria-hidden="true"></div>
+    <div class="reel__metric reel__metric--hero" aria-hidden="true"></div>
     <div class="reel__stage">
 
       <!-- 0 ------------------------------------------------------------- -->

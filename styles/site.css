@@ -90,6 +90,21 @@
      watch; a beat now plays under every one of them, so a shorter chapter
      reads as better paced rather than rushed. */
   --chapter-span: 200svh;    /* scroll distance one chapter owns */
+
+  /* The hero is a title card, not a chapter, and it was being charged a
+     chapter's rent. Nothing happens in it: ANCHORS in scripts/scroll.js holds
+     the film between t 0.000 and 0.008 for its entire length, and hero-life
+     below holds the wordmark at full opacity with no arrival beat to play.
+     A full 200svh of that made the first thing anyone does on this page the
+     least rewarding thing on it.
+
+     It gets its own, shorter span, and every chapter after it is pulled up by
+     the difference. One constant lead rather than a per-chapter span table:
+     that is all this particular problem needs, and the general case would
+     mean cumulative offsets threaded through three files. --reel-lead is
+     negative, and everything downstream simply adds it. */
+  --hero-span: 70svh;
+  --reel-lead: calc(var(--hero-span) - var(--chapter-span));
   /* Range widening at both ends. Derived from the span rather than set
      independently, so the handoff timing holds at every breakpoint and only
      --chapter-span is retuned below.
@@ -429,6 +444,7 @@ body {
      is exactly where the last chapter's range ends — so the final departure
      completes at the same moment the stage unpins. */
   height: calc(var(--chapter-count) * var(--chapter-span)
+               + var(--reel-lead)
                + var(--chapter-overlap) + 100svh);
 }
 
@@ -455,6 +471,11 @@ body {
   visibility: hidden;
   pointer-events: none;
 }
+
+/* The hero's span is its own number now, so it needs its own probe — same
+   contract as the one above, and for the same reason: the svh arithmetic
+   stays in CSS and no driver has to hard-code a figure that could drift. */
+.reel__metric--hero { height: var(--hero-span); }
 
 .chapter {
   grid-area: 1 / 1;
@@ -545,15 +566,17 @@ body {
   .chapter__body {
     animation-timeline: scroll(root block);
     animation-range:
-      calc(var(--i) * var(--chapter-span) - var(--chapter-overlap))
-      calc((var(--i) + 1) * var(--chapter-span) + var(--chapter-overlap));
+      calc(var(--i) * var(--chapter-span) + var(--reel-lead)
+           - var(--chapter-overlap))
+      calc((var(--i) + 1) * var(--chapter-span) + var(--reel-lead)
+           + var(--chapter-overlap));
   }
 
   /* The hero is already on screen at rest, so it has no arrival beat and its
      range must start at 0 — a negative start would leave it part-faded at
      scroll position zero. */
   .chapter--hero {
-    animation-range: 0 calc(var(--chapter-span) + var(--chapter-overlap));
+    animation-range: 0 calc(var(--hero-span) + var(--chapter-overlap));
   }
 }
 
@@ -588,6 +611,7 @@ body {
      uses, so the two drivers cannot diverge. */
   .reel-scrub .reel {
     height: calc(var(--chapter-count) * var(--chapter-span)
+                 + var(--reel-lead)
                  + var(--chapter-overlap) + 100svh);
   }
 
@@ -645,9 +669,27 @@ body {
 }
 
 /* Same shape minus the arrival — the hero is fully present at scroll 0. */
+/* The departure starts at 50% rather than 88% because the range under it is
+   now 70svh rather than 200svh. Held to 88% of that, the wordmark would have
+   under 3svh of scroll to get off the screen in and would read as a cut
+   rather than as a lift.
+
+   Two numbers set the opening and they are chosen together, so moving one
+   alone will spoil it: this 50%, and --hero-span. Against HERO_REST = 0 in
+   scripts/scroll.js — the page lands exactly where the browser put it, with
+   no runway above it that nobody will ever scroll up into — the visitor gets
+   the wordmark solid for the first ~35svh of scrolling, watches it lift over
+   the next ~32, and has chapter 1's title about 18svh after that. Call it
+   four fifths of a screen from landing to the first sentence, against a
+   screen and a quarter before; and the part of that which was a motionless
+   wordmark is now under half what it was.
+
+   scripts/scroll.js knows this 0.50 as HERO_HOLD_HI, which is how THE ASSIST
+   knows a visitor stopped over the hero is already settled and needs no
+   help. */
 @keyframes hero-life {
   0%   { opacity: 1; visibility: visible; transform: scale(1) translateY(0); }
-  88%  { opacity: 1; transform: scale(1) translateY(0); }
+  50%  { opacity: 1; transform: scale(1) translateY(0); }
   96%  { opacity: 0;
          transform: scale(var(--scale-depart)) translateY(-3vh); }
   99%  { visibility: visible; }
