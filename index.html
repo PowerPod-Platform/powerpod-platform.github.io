@@ -14,10 +14,14 @@
   <link rel="preload" href="fonts/DMSans-Variable-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles/site.css">
 
-  <!-- Order matters and `defer` preserves it: three, then the CAD data the
-       film reads, then the film, then the one scroll controller that drives
-       it. reel.js is independent and only wakes up where CSS scroll timelines
-       are missing. -->
+  <!-- Order matters and `defer` preserves it: the performance tier first,
+       since the stylesheet's .gpu-low rules and the film's framebuffer scale
+       both hang off it; then three, then the CAD data the film reads, then
+       the film, then the one scroll controller that drives it. reel.js is
+       independent and only wakes up where CSS scroll timelines are missing.
+       perf.js is deliberately NOT render-blocking: the only thing it can be
+       late for is a few frames of glaze drift on a 29-second cycle. -->
+  <script src="scripts/perf.js" defer></script>
   <script src="scripts/vendor/three.min.js" defer></script>
   <script src="scripts/pod-geometry.js" defer></script>
   <script src="scripts/cinema.js" defer></script>

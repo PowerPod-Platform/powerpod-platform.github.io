@@ -12,6 +12,7 @@
      9. Chapter typography
     10. Closing footer
     11. Mobile & landscape
+    12. Performance tier
 
    Stacking order, bottom to top:
      0  .glaze     ceramic surface
@@ -853,7 +854,50 @@ body {
 }
 
 
-/* Section 12 (motion preferences) removed on purpose: every visitor gets the
+/* 12. Performance tier ===================================================== */
+/* scripts/perf.js puts .gpu-low on <html> for a machine that cannot composite
+   this page's three full-screen pixel passes at 60fps — the glaze's blur, the
+   grain's blend, and the film's multisampled framebuffer — either because it
+   said so up front or because the frame watchdog measured it.
+
+   Nothing below removes, shrinks, softens or flattens anything. The glaze
+   keeps its blur radius, its four blobs, its sheen, its colours and its
+   oversized container; the grain keeps its frequency and its weight. The page
+   renders the same picture. It simply stops being a moving one, which is the
+   whole difference between a surface the compositor rasterises once and a
+   surface it must re-blur sixty times a second forever. */
+
+.gpu-low .glaze__blob,
+.gpu-low .glaze__sheen {
+  /* The blur itself was never the expensive part — a blur whose INPUT moves
+     is. Held still, the entire glaze collapses to one rasterisation that is
+     cached for the life of the page, and the per-frame cost of the background
+     goes to zero. What is lost is drift on 29-to-61-second cycles, which is
+     not something a visitor who never sees the other tier can notice.
+
+     will-change goes with it, and has to: it is what keeps each blob on its
+     own composited layer, and five promoted layers feeding a filter is
+     precisely what stops the result being cacheable. Left on, this rule would
+     freeze the picture and keep paying for it. */
+  animation: none;
+  will-change: auto;
+}
+
+.gpu-low .grain {
+  /* mix-blend-mode forces the compositor to flatten everything underneath
+     into one buffer, read it back, and blend the full viewport against it on
+     every frame either layer changes — which during a scroll is every frame.
+     Over a backdrop this light the two blend modes are the same arithmetic:
+     multiply against white IS the source, so at 5% over porcelain the results
+     differ by well under a perceptible step. The only place they part is over
+     the film's own ink lines, where normal blending lifts a 1px black line by
+     at most 5%. That is the entire cost of removing a full-screen pass. */
+  mix-blend-mode: normal;
+}
+
+
+/* A motion-preferences section was removed on purpose: every visitor gets the
    full cinema and the paged reel, regardless of an OS-level reduced-motion
    setting. scripts/scroll.js and scripts/reel.js no longer check for it
-   either. */
+   either. (Honouring it for the glaze alone would now be one selector added
+   to section 12 above, if that ever becomes wanted.) */

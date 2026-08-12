@@ -33,9 +33,18 @@ const INK_CSS="#0a0a0a", MUTE_CSS="#8b8b8b", AMBER_CSS="#f5a623";
 const stage=host;
 /* Transparent clear: the ceramic glaze underneath is the film's background,
    and the whiteout beats in Act III/IV dissolve to it rather than to white. */
+/* antialias stays on in both performance tiers. This is a drawing of 1px CAD
+   lines and MSAA is the only thing keeping them from crawling as the camera
+   moves; the framebuffer SCALE is what gives instead, and scripts/perf.js owns
+   that number. Read through resize() rather than set here, so a mid-scroll
+   demotion is one resize() call away from taking effect. */
+const perf=window.PPPerf;
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.setSize(innerWidth,innerHeight);
+/* Sizing is left entirely to resize() at the foot of this function, which runs
+   before anything is ever rendered. Sizing here as well would allocate a
+   full-viewport multisampled framebuffer at the wrong scale and throw it away
+   again a few hundred lines later, which is exactly the allocation the low
+   tier exists to avoid. */
 renderer.setClearColor(0x000000,0);
 stage.appendChild(renderer.domElement);
 const scene=new THREE.Scene();
@@ -324,11 +333,19 @@ const HCELLS=[];
   const one=merge(cell);
   HCELLS.forEach(([cx,cy,cz])=>gs.push(shiftGeom(one.clone(),cx,cy,cz)));
   horizGroup.add(L(merge(gs),horizMat,1));
-  const occ=new THREE.CylinderGeometry(r-0.15,r-0.15,D.cell.len-0.6,20); occ.rotateZ(Math.PI/2);
-  HCELLS.forEach(([cx,cy,cz])=>{
-    const m=new THREE.Mesh(occ,horizPaper); m.position.set(cx,cy,cz); m.renderOrder=2;
-    horizGroup.add(m);
-  });
+  /* Sixty identical cans that share one material, never move relative to one
+     another and always enter and leave frame together — so they are merged
+     into a single geometry and cost one draw call rather than sixty. The
+     upright pack next door deliberately is NOT merged: each of those seventy
+     cells carries its own opacity and its own y as it stacks, which is a
+     per-object animation and cannot survive being welded into one buffer.
+     toNonIndexed() first, because merge() reads positions straight out and
+     an index buffer would not survive the concatenation. */
+  const occ=new THREE.CylinderGeometry(r-0.15,r-0.15,D.cell.len-0.6,20);
+  occ.rotateZ(Math.PI/2);
+  const occTri=occ.toNonIndexed();
+  horizGroup.add(P(merge(HCELLS.map(([cx,cy,cz])=>
+    shiftGeom(occTri.clone(),cx,cy,cz))),horizPaper));
 }
 
 /* --- structural internals --- */
@@ -1407,12 +1424,19 @@ function frame(t,d,l){
   renderer.render(scene,camera);
 }
 
+/* The only place the framebuffer is sized, so it is also the only place the
+   performance tier has to be consulted: a demotion just calls this again. */
 function resize(){
   const w=Math.max(1,innerWidth), h=Math.max(1,innerHeight);
   camera.aspect=w/h;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(perf?perf.pixelRatio():Math.min(devicePixelRatio,2));
   renderer.setSize(w,h);
 }
+resize();
+/* A demotion reallocates the framebuffer, which costs one dropped frame — on
+   a machine that is already dropping them, and once. */
+if(perf) perf.onTier(resize);
 
 return {frame:frame, resize:resize};
 

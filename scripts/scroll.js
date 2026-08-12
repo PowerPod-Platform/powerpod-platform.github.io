@@ -48,7 +48,14 @@
   var host = document.getElementById('film');
   if (!reel || !stage || !metric) return;
 
+  /* scripts/perf.js already opened a context to identify the GPU and handed it
+     straight back, so its answer is reused rather than a second one opened
+     here — browsers cap how many are live at once, and the film still needs
+     one of its own. The local probe is the fallback for perf.js not being
+     there at all, and it leaks its context by necessity: there is nothing to
+     hand it to. */
   function hasWebGL() {
+    if (window.PPPerf) return window.PPPerf.webgl;
     try {
       var c = document.createElement('canvas');
       return !!(window.WebGLRenderingContext &&
@@ -444,6 +451,11 @@
       var v = (window.scrollY - reelTop) / span;
       var u = clamp(Number.isFinite(v) ? v : 0, 0, count);
       film.frame(remap(u), dimAt(u), liftAt(u));
+      /* Fed only from here, and only when there is a film to draw: this loop
+         runs while something is actually moving, so these are frames under
+         real load rather than an idle page's easy ones. scripts/perf.js
+         decides what to do about a sustained run of slow ones. */
+      if (window.PPPerf) window.PPPerf.sample(now);
     }
 
     if (busy || wheelTarget !== null || performance.now() < quietUntil) {
