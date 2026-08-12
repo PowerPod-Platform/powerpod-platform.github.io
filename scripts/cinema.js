@@ -1431,7 +1431,13 @@ function resize(){
   camera.aspect=w/h;
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(perf?perf.pixelRatio():Math.min(devicePixelRatio,2));
-  renderer.setSize(w,h);
+  /* updateStyle=false. The canvas is sized to fill #film by CSS instead, so it
+     always covers the viewport even while this backing store is briefly the
+     wrong shape — which is exactly what lets scripts/scroll.js hold every
+     resize back until a mobile URL bar has finished sliding. Left to three.js,
+     the inline width/height would track the backing store and leave a strip of
+     bare glaze along the bottom edge for the length of that wait. */
+  renderer.setSize(w,h,false);
 }
 resize();
 /* A demotion reallocates the framebuffer, which costs one dropped frame — on

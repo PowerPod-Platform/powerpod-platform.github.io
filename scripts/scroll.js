@@ -447,9 +447,11 @@
     }
     lastFrameT = now;
 
+    var v = (window.scrollY - reelTop) / span;
+    var u = clamp(Number.isFinite(v) ? v : 0, 0, count);
+    markIndex(u);
+
     if (film) {
-      var v = (window.scrollY - reelTop) / span;
-      var u = clamp(Number.isFinite(v) ? v : 0, 0, count);
       film.frame(remap(u), dimAt(u), liftAt(u));
       /* Fed only from here, and only when there is a film to draw: this loop
          runs while something is actually moving, so these are frames under
@@ -596,8 +598,125 @@
   // sticky layout it needs, so the first real measurement is the next frame's.
   requestAnimationFrame(function () { measure(); snap(); wake(); });
 
+  /* =====================================================================
+     THE STATION INDEX
+
+     Two things make a long scroll tiring and only one of them is length. The
+     other is not knowing how much of it is left: uncertainty makes any
+     distance feel longer than it is, and thirteen chapters with no horizon
+     is a lot of uncertainty. The index answers both — it says where you are,
+     it says how many remain, and it lets you go straight to one.
+
+     It also closes a gap this page had from the start. THE BEAT above — the
+     two-phase glide that lets a chapter's own content beat play in the open,
+     after its words have already landed — only ever answered a key press. A
+     phone has no keys. Every touch visitor was getting all of the distance
+     and none of the choreography, which is precisely backwards, since the
+     thumb is the input that tires. A tap on a station is a deliberate,
+     discrete gesture in exactly the sense a key press is, so it is answered
+     the same way rather than with a jump.
+
+     Nothing in here intercepts a gesture. A drag is still a drag, still ends
+     exactly where the visitor put it, and stopping between two chapters is
+     still somewhere they are allowed to be.
+     ===================================================================== */
+  var index = document.querySelector('.index');
+  var stations = index ? index.querySelectorAll('.index__link') : [];
+  var indexLive = false, marked = -1;
+
+  function markIndex(u) {
+    if (!index) return;
+    var live = pinned && u > 0.6 && u < count - 0.02;
+    if (live !== indexLive) {
+      indexLive = live;
+      html.classList.toggle('index-live', live);
+    }
+    if (!live) return;
+    /* floor(u), not nearestPage(): the mark follows the FILM, so it moves
+       with what is on screen rather than with where a keyboard step would
+       land. The two differ through a handoff, which is exactly when a mark
+       that lags is most obvious. */
+    var at = clamp(Math.floor(u), 0, count - 1);
+    if (at === marked) return;
+    if (stations[marked]) stations[marked].removeAttribute('aria-current');
+    if (stations[at]) stations[at].setAttribute('aria-current', 'true');
+    marked = at;
+  }
+
+  if (index) {
+    index.addEventListener('click', function (e) {
+      var a = e.target.closest ? e.target.closest('.index__link') : null;
+      if (!a) return;
+      /* Off the pinned layout the reel is an ordinary document and the href
+         is a real fragment link to a real heading. Let it be one. */
+      if (!pinned) return;
+      e.preventDefault();
+      var to = parseInt(a.getAttribute('data-page'), 10);
+      if (!(to >= 0)) return;
+      /* A tap from inside the footer is a request to come back into the reel,
+         which is the one place the pager has deliberately let go of. */
+      released = false;
+      /* Only the next chapter earns the bent glide. Its fast leg is timed for
+         one chapter's travel, and asking it to carry ten would spend that
+         900ms crossing most of the film. Everything else takes the plain
+         glide, whose duration is derived from the distance. */
+      if (to === page + 1 && BEAT[to]) glideBeat(to);
+      else goTo(to);
+    });
+  }
+
+  /* =====================================================================
+     RESIZE, AND THE MOBILE URL BAR
+
+     A phone's URL bar sliding in or out fires `resize` — several times, over
+     the couple of hundred milliseconds its animation takes — with a changed
+     innerHeight and an unchanged innerWidth. It does that precisely when the
+     visitor is scrolling UP, because that is the direction that brings the bar
+     back; scrolling down hides it once and it stays hidden. That asymmetry was
+     the whole of why scrolling up felt broken and scrolling down felt fine.
+
+     Handled naively, each of those events did two expensive and one actively
+     hostile thing: measure() reallocated the film's multisampled framebuffer
+     (seven times in 250ms, measured, at a phone's devicePixelRatio of 3), and
+     snap(true) scrolled the page to the current chapter's rest point — a
+     programmatic scroll fighting a thumb that was still on the glass.
+
+     Neither is necessary, because nothing about the reel's geometry actually
+     changes when that bar moves. Every length that sets the reel's timing is
+     in `svh` (styles/site.css section 2), which is defined against the
+     viewport with the bar SHOWN and does not move for the life of the page.
+     The only thing that genuinely needs updating is the film's framebuffer,
+     and that can wait until the bar has stopped moving.
+
+     So: coalesce every resize into one pass after things settle, and re-seat
+     the scroll only for a change that is really a reshape — a width change, or
+     a height change too large to be browser chrome. */
+
+  var SETTLE_MS = 160;    // longer than a URL bar animation, shorter than a
+                          // drag between two deliberate window sizes
+  var CHROME_MAX = 220;   // px; taller than any mobile browser's own furniture
+
+  var lastW = innerWidth, lastH = innerHeight;
+  var settleTimer = 0, reshaped = false;
+
+  function onResize() {
+    var w = innerWidth, h = innerHeight;
+    if (w !== lastW || Math.abs(h - lastH) > CHROME_MAX) reshaped = true;
+    lastW = w;
+    lastH = h;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(function () {
+      measure();
+      /* Only a real reshape has moved the visitor's place in the reel and
+         earns the right to move them back onto a page. A URL bar has not. */
+      if (reshaped) snap(true);
+      reshaped = false;
+      wake();
+    }, SETTLE_MS);
+  }
+
   addEventListener('load', function () { measure(); snap(true); wake(); });
-  addEventListener('resize', function () { measure(); snap(true); wake(); });
+  addEventListener('resize', onResize);
   addEventListener('pageshow', function () { measure(); snap(); wake(); });
   addEventListener('orientationchange', function () {
     setTimeout(function () { measure(); snap(true); wake(); }, 120);

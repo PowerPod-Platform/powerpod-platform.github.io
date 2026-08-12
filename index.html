@@ -14,13 +14,18 @@
   <link rel="preload" href="fonts/DMSans-Variable-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles/site.css">
 
-  <!-- Order matters and `defer` preserves it: the performance tier first,
-       since the stylesheet's .gpu-low rules and the film's framebuffer scale
-       both hang off it; then three, then the CAD data the film reads, then
-       the film, then the one scroll controller that drives it. reel.js is
-       independent and only wakes up where CSS scroll timelines are missing.
-       perf.js is deliberately NOT render-blocking: the only thing it can be
-       late for is a few frames of glaze drift on a 29-second cycle. -->
+  <!-- Order matters and `defer` preserves it: the input guard first, since it
+       has no dependencies and the sooner it is listening the better; then the
+       performance tier, since the stylesheet's .gpu-low rules and the film's
+       framebuffer scale both hang off it; then three, then the CAD data the
+       film reads, then the film, then the one scroll controller that drives
+       it. reel.js is independent and only wakes up where CSS scroll timelines
+       are missing.
+       Neither guard.js nor perf.js is render-blocking. perf.js can only be
+       late for a few frames of glaze drift on a 29-second cycle, and guard.js
+       for a right-click in the first few milliseconds after parse — and both
+       have a half in styles/site.css that is live before either runs. -->
+  <script src="scripts/guard.js" defer></script>
   <script src="scripts/perf.js" defer></script>
   <script src="scripts/vendor/three.min.js" defer></script>
   <script src="scripts/pod-geometry.js" defer></script>
@@ -243,6 +248,29 @@
 
     </div>
   </main>
+
+  <!-- The station index. Fixed, so its place in the document is free, and it
+       sits last on purpose: this is a progress mark first and a table of
+       contents second, and tabbing into the page should reach the reel before
+       it. Every href is a real fragment link to a real heading, so with
+       JavaScript off — where the reel is a plain stacked document — these
+       work as ordinary in-page links and scripts/scroll.js never intervenes.
+       data-page is what it uses when it does. -->
+  <nav class="index" aria-label="Chapters">
+    <a class="index__link" href="#ch-hero"      data-page="0"><span class="index__label">PowerPod Platform</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-standard"  data-page="1"><span class="index__label">Why a standard</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-form"      data-page="2"><span class="index__label">One form factor</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-envelope"  data-page="3"><span class="index__label">Standard outside</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-cells"     data-page="4"><span class="index__label">Chemistry</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-bms"       data-page="5"><span class="index__label">BMS</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-connector" data-page="6"><span class="index__label">Connector</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-connected" data-page="7"><span class="index__label">Connected</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-os"        data-page="8"><span class="index__label">PowerPodOS</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-mobile"    data-page="9"><span class="index__label">PowerPod App</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-offline"   data-page="10"><span class="index__label">Off grid</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-join"      data-page="11"><span class="index__label">Join the Platform</span><span class="index__tick" aria-hidden="true"></span></a>
+    <a class="index__link" href="#ch-members"   data-page="12"><span class="index__label">Members</span><span class="index__tick" aria-hidden="true"></span></a>
+  </nav>
 
   <footer class="closing">
     <p class="closing__mark">PowerPod Platform<span class="wordmark__tm">™</span></p>

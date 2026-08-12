@@ -13,6 +13,8 @@
     10. Closing footer
     11. Mobile & landscape
     12. Performance tier
+    13. Input guard
+    14. The station index
 
    Stacking order, bottom to top:
      0  .glaze     ceramic surface
@@ -309,7 +311,17 @@ body {
   opacity: 0;
 }
 
-#film canvas { display: block; }
+/* Sized here rather than by three.js, which is handed updateStyle=false in
+   scripts/cinema.js. The backing store is allowed to lag a mobile URL bar by
+   a beat (see RESIZE in scripts/scroll.js); the element it is presented in
+   must not, or that lag shows as a strip of bare glaze along the bottom. A
+   briefly stale buffer stretched over the right box is invisible; a correct
+   buffer in the wrong box is not. */
+#film canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 
 /* Lifts the copy off the drawing without boxing it in. The band is a wash of
    the page's own porcelain rather than a panel, so the ceramic keeps reading
@@ -894,6 +906,196 @@ body {
      at most 5%. That is the entire cost of removing a full-screen pass. */
   mix-blend-mode: normal;
 }
+
+
+/* 13. Input guard ========================================================= */
+/* The half of scripts/guard.js that is CSS, and it is CSS for two reasons
+   rather than one.
+
+   It is the only half that reaches iOS. A long press there raises the callout
+   — the copy/look-up/share sheet, and with it Share > View Source in any
+   browser that offers one — and that is not a `contextmenu` event, is not a
+   DOM event of any kind, and cannot be cancelled from script. This property
+   is the only handle on it that exists.
+
+   It is also the only half that survives JavaScript being switched off, which
+   is the first thing anyone determined to read the page will do, and which
+   takes the whole of guard.js with it.
+
+   Section 13 buys deterrence at a real cost to ordinary visitors: nobody can
+   select a sentence of the spec copy to quote it. Removing these three
+   declarations and the selection listeners in scripts/guard.js — together,
+   they are one decision — restores that and changes nothing else. */
+
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  /* iOS long-press callout. Prefixed only: there is no standard property for
+     this and Safari is the only engine that needs one. */
+  -webkit-touch-callout: none;
+}
+
+/* Dragging an element out of the page is a second route to its source, and
+   `user-select` does not cover it. */
+img,
+canvas,
+svg,
+a {
+  /* Prefixed only, and there is no unprefixed form to pair it with: this has
+     never been a standard property. WebKit and Blink honour it, Gecko covers
+     the same ground through the dragstart listener in scripts/guard.js. */
+  -webkit-user-drag: none;
+}
+
+/* The CTA is still a link and still has to look like it can be pressed —
+   `user-select: none` does not affect that, but a stray text cursor over it
+   would. */
+.cta { cursor: pointer; }
+
+
+/* 14. The station index =================================================== */
+/* Thirteen chapters is about twenty-two screens of scrolling on a phone. The
+   film needs that distance. The reader does not, and the gap between those
+   two is what scroll fatigue actually is.
+
+   Drawn as a dimension line rather than as a scrollbar, because that is the
+   language the rest of the page is already speaking: a column of station
+   ticks against the right margin, the current one extended and inked, exactly
+   as a drawing marks the section it is calling out. It says three things at
+   once — where you are, how much is left, and that you may leave — and the
+   middle one is the important one. Not knowing how far a scroll runs is what
+   makes it feel long, more than its length is.
+
+   scripts/scroll.js hangs .index-live on <html> and moves aria-current. */
+
+.index {
+  position: fixed;
+  z-index: 5;                /* above the reel; it has to be reachable */
+  top: 50%;
+  right: calc(1rem + env(safe-area-inset-right));
+  transform: translateY(-50%);
+  display: grid;
+  gap: 0.45rem;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.55s ease, visibility 0.55s;
+}
+
+/* Absent over the hero — there is nothing behind it to go back to — and gone
+   again once the roster hands the scroll to the footer. */
+.index-live .index {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.index__link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  /* The rule is 2px tall. The target is not: 44px wide and 22px tall, so the
+     whole row either side of the tick is pressable. */
+  width: 44px;
+  height: 22px;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.index__link:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--ink) 45%, transparent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.index__tick {
+  display: block;
+  width: 14px;
+  height: 2px;
+  background: color-mix(in srgb, var(--ink) 20%, transparent);
+  /* Length carries the state, not colour alone: the mark still reads at a
+     glance in a photograph, in greyscale, and to anyone who cannot separate
+     20% ink from 100% ink by hue. */
+  transition: width 0.4s cubic-bezier(0.2, 0.7, 0.2, 1),
+              background-color 0.4s ease;
+}
+
+.index__link[aria-current="true"] .index__tick {
+  width: 30px;
+  background: var(--ink);
+}
+
+.index__label {
+  position: absolute;
+  right: 44px;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--ink) 62%, transparent);
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+
+/* Hover only. On a touch screen there is no hover to reveal it with, and a
+   label that appears on press appears too late to have chosen anything by. */
+@media (hover: hover) {
+  .index__link:hover .index__tick {
+    width: 22px;
+    background: color-mix(in srgb, var(--ink) 55%, transparent);
+  }
+  .index__link:hover .index__label,
+  .index__link:focus-visible .index__label {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Phones: the same index, turned along the top edge — the one band of a phone
+   screen this page leaves empty. The copy sits at the bottom in its own band
+   and the drawing is centred, so nothing here can collide with either, which
+   the right margin at this width could not promise. */
+@media (max-width: 48rem) {
+  .index {
+    top: calc(0.85rem + env(safe-area-inset-top));
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    grid-auto-flow: column;
+    gap: 0.34rem;
+  }
+
+  .index__link {
+    width: 18px;
+    height: 34px;
+    justify-content: center;
+  }
+
+  /* Turned on its side the ticks all share a length, so weight carries the
+     state instead. */
+  .index__tick { width: 100%; }
+  .index__link[aria-current="true"] .index__tick {
+    width: 100%;
+    height: 3px;
+  }
+
+  .index__label { display: none; }
+}
+
+/* Landscape phones keep the right margin — there is width to spare and almost
+   no height — but the column has to close up to fit inside it. */
+@media (max-height: 30rem) and (orientation: landscape) {
+  .index { gap: 0.22rem; }
+  .index__link { height: 16px; }
+  .index__label { display: none; }
+}
+
+/* Without the pinned layout the reel is an ordinary stacked document, the
+   headings are all reachable by scrolling, and scripts/scroll.js leaves every
+   one of these as the plain fragment link it already is. Nothing has to hide:
+   .index-live is simply never set, so the index stays out of the way. */
 
 
 /* A motion-preferences section was removed on purpose: every visitor gets the
