@@ -94,8 +94,14 @@
   --card-pad: clamp(1.4rem, 3.2vw, 2rem);
   --card-radius: 1.25rem;
   /* Read by scripts/touch.js off .touch-plate, so the growing rectangle and
-     the landed card are the same fill by construction, at every tier. */
-  --card-fill: color-mix(in srgb, var(--porcelain) 58%, transparent);
+     the landed card are the same fill by construction.
+     OPAQUE, and there is no backdrop-filter anywhere in section 15. A
+     translucent card over a blurred backdrop is one full re-blur of a
+     card-sized region on every frame the backdrop changes — and the glaze
+     underneath changes on every frame of its 29-second drift, so that bill
+     ran for as long as the card was open. This is a flat fill: one composite,
+     no filter, nothing to recompute. */
+  --card-fill: color-mix(in srgb, var(--porcelain) 92%, white);
   /* Between a lede and a band title: the question is the statement on screen,
      but the longest of them runs to eighty characters and still has to sit in
      the card above its answers. */
@@ -201,15 +207,40 @@ body {
 
 
 /* 4. Glaze system ========================================================= */
-/* Four oversized, heavily blurred colour fields drifting on mutually prime
-   cycles. Each blob runs two independent animations — position and opacity —
-   on different periods, so the colour mix at any fixed point keeps shifting
-   even when a blob is near the end of its travel. That separation is what
-   reads as moving hue rather than sliding shapes.
-
+/* Four oversized, heavily blurred colour fields, held still.
+   
+   This used to drift: each blob ran two animations on mutually prime periods
+   (29/37/43/53s for position, 31–59s for opacity, 61s for the sheen) so the
+   colour mix at any fixed point kept shifting. It was the best thing on the
+   page and it was also, by a wide margin, the most expensive: a blur whose
+   INPUT moves can never be cached, so this layer was re-rasterised on every
+   frame, on every page, forever — including while the page sat idle and
+   nobody was looking at it.
+   
+   Held still, the whole glaze collapses to one rasterisation that is reused
+   for the life of the page and the per-frame cost of the background goes to
+   zero. Nothing is removed, shrunk, softened or flattened: same four blobs,
+   same blur radius, same colours, same oversized container, same sheen. It is
+   the same picture. It simply is not a moving one.
+   
+   `will-change` had to go with the animations, and that half is not optional:
+   it is what keeps each blob on its own composited layer, and five promoted
+   layers feeding a filter is precisely what stops the result being cacheable.
+   Freezing the picture and leaving will-change on would hold it still and keep
+   paying for it. If any animation ever comes back here, both halves come back
+   together and so does the bill.
+   
+   No opacity is declared on the blobs, so every one of them sits at 1 rather
+   than part way through a breathe cycle. That is the most saturated the glaze
+   ever got, and it is deliberate — this is the composition now, not a frame
+   sampled out of a loop.
+   
    The container is inset past the viewport on every side so the blur's own
    falloff at the container edge happens off-screen; otherwise it would show
-   as a soft vignette of bare base colour.
+   as a soft vignette of bare base colour. Those offsets are in vh/vw/vmax,
+   which are the LARGE viewport units: they do not move when a mobile URL bar
+   collapses, so the cached raster survives a scroll on a phone. (`dvh` would
+   not, and must never appear here.)
 
    Blur is applied once here rather than per blob: one rasterisation, not four. */
 
@@ -230,7 +261,6 @@ body {
   margin-top: var(--blob-offset);
   margin-left: var(--blob-offset);
   border-radius: 50%;
-  will-change: transform, opacity;
 }
 
 /* Centres are given in viewport units offset by the container overhang, not
@@ -241,32 +271,24 @@ body {
   top: calc(var(--glaze-inset) + 26vh);
   left: calc(var(--glaze-inset) + 22vw);
   background: radial-gradient(closest-side, var(--glaze-blush), transparent);
-  animation: drift-a 29s ease-in-out infinite,
-             breathe-a 47s ease-in-out infinite;
 }
 
 .glaze__blob--celadon {
   top: calc(var(--glaze-inset) + 20vh);
   left: calc(var(--glaze-inset) + 78vw);
   background: radial-gradient(closest-side, var(--glaze-celadon), transparent);
-  animation: drift-b 37s ease-in-out infinite,
-             breathe-b 31s ease-in-out infinite;
 }
 
 .glaze__blob--periwinkle {
   top: calc(var(--glaze-inset) + 78vh);
   left: calc(var(--glaze-inset) + 26vw);
   background: radial-gradient(closest-side, var(--glaze-periwinkle), transparent);
-  animation: drift-c 43s ease-in-out infinite,
-             breathe-a 59s ease-in-out infinite;
 }
 
 .glaze__blob--clay {
   top: calc(var(--glaze-inset) + 74vh);
   left: calc(var(--glaze-inset) + 76vw);
   background: radial-gradient(closest-side, var(--glaze-clay), transparent);
-  animation: drift-d 53s ease-in-out infinite,
-             breathe-b 41s ease-in-out infinite;
 }
 
 /* Broad specular highlight — the wet look of a fired glaze.
@@ -279,57 +301,7 @@ body {
      of the viewport and the glaze underneath stops reading. */
   background: radial-gradient(115% 70% at 50% 6%,
               rgba(255, 255, 255, 0.5), transparent 66%);
-  will-change: transform, opacity;
-  animation: sheen 61s ease-in-out infinite;
 }
-
-/* Drift keyframes. Each closes its loop (0% === 100%) with two intermediate
-   stops, which moves more organically than a two-stop `alternate` ping-pong.
-   Periods 29/37/43/53s are mutually prime, so the composite pattern's repeat
-   is far longer than any session — there is no visible loop point. */
-
-@keyframes drift-a {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  33%      { transform: translate3d(14vw, -10vh, 0) scale(1.22); }
-  66%      { transform: translate3d(-10vw, 12vh, 0) scale(0.88); }
-}
-
-@keyframes drift-b {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  33%      { transform: translate3d(-12vw, 13vh, 0) scale(0.86); }
-  66%      { transform: translate3d(9vw, -9vh, 0) scale(1.24); }
-}
-
-@keyframes drift-c {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  33%      { transform: translate3d(11vw, 10vh, 0) scale(1.2); }
-  66%      { transform: translate3d(-13vw, -7vh, 0) scale(0.89); }
-}
-
-@keyframes drift-d {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  33%      { transform: translate3d(-9vw, -12vh, 0) scale(1.18); }
-  66%      { transform: translate3d(12vw, 8vh, 0) scale(0.87); }
-}
-
-/* Opacity cycles, deliberately out of phase with the drift periods so the
-   colour mix at a fixed point keeps changing even mid-travel. */
-
-@keyframes breathe-a {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.45; }
-}
-
-@keyframes breathe-b {
-  0%, 100% { opacity: 0.5; }
-  50%      { opacity: 1; }
-}
-
-@keyframes sheen {
-  0%, 100% { transform: translate3d(0, 0, 0);      opacity: 0.85; }
-  50%      { transform: translate3d(0, 4vh, 0);    opacity: 1; }
-}
-
 
 /* 5. Film & scrim ========================================================= */
 /* scripts/scroll.js mounts a transparent WebGL canvas in #film and puts
@@ -989,32 +961,19 @@ html.touch-open .index {
 
 /* 12. Performance tier ===================================================== */
 /* scripts/perf.js puts .gpu-low on <html> for a machine that cannot composite
-   this page's three full-screen pixel passes at 60fps — the glaze's blur, the
-   grain's blend, and the film's multisampled framebuffer — either because it
-   said so up front or because the frame watchdog measured it.
+   this page's full-screen pixel work at 60fps, either because it said so up
+   front or because the frame watchdog measured it.
 
-   Nothing below removes, shrinks, softens or flattens anything. The glaze
-   keeps its blur radius, its four blobs, its sheen, its colours and its
-   oversized container; the grain keeps its frequency and its weight. The page
-   renders the same picture. It simply stops being a moving one, which is the
-   whole difference between a surface the compositor rasterises once and a
-   surface it must re-blur sixty times a second forever. */
+   This section used to hold two rules and the larger of them has been promoted
+   to the default: the glaze is now held still on every tier (section 4), so
+   there is no longer a version of this page whose background is re-blurred
+   every frame. That was the pass this tier mostly existed to remove.
 
-.gpu-low .glaze__blob,
-.gpu-low .glaze__sheen {
-  /* The blur itself was never the expensive part — a blur whose INPUT moves
-     is. Held still, the entire glaze collapses to one rasterisation that is
-     cached for the life of the page, and the per-frame cost of the background
-     goes to zero. What is lost is drift on 29-to-61-second cycles, which is
-     not something a visitor who never sees the other tier can notice.
-
-     will-change goes with it, and has to: it is what keeps each blob on its
-     own composited layer, and five promoted layers feeding a filter is
-     precisely what stops the result being cacheable. Left on, this rule would
-     freeze the picture and keep paying for it. */
-  animation: none;
-  will-change: auto;
-}
+   What is left is two passes and one rule. The grain's multiply blend is
+   flattened here; the film's multisampled framebuffer is handled in JavaScript
+   rather than CSS, through PPPerf.pixelRatio() in scripts/cinema.js. Neither
+   removes, shrinks or softens anything the visitor is reading — the grain
+   keeps its frequency and its weight, and the drawing keeps every line. */
 
 .gpu-low .grain {
   /* mix-blend-mode forces the compositor to flatten everything underneath
@@ -1222,8 +1181,10 @@ a {
 /* A motion-preferences section was removed on purpose: every visitor gets the
    full cinema and the paged reel, regardless of an OS-level reduced-motion
    setting. scripts/scroll.js and scripts/reel.js no longer check for it
-   either. (Honouring it for the glaze alone would now be one selector added
-   to section 12 above, if that ever becomes wanted.) */
+   either. The glaze used to be the cheap half of that question — one selector
+   would have stilled it — but it is stilled for everybody now, so what is left
+   to honour is the film and the chapter transitions, which is the whole of the
+   page and not a corner of it. */
 
 
 /* 15. Get in touch ======================================================== */
@@ -1290,72 +1251,19 @@ a {
 
 .touch-layer.is-open .touch-veil { opacity: 1; }
 
-/* Warm light thrown out of the underline as it opens. --bloom-x / --bloom-y
-   are written by scripts/touch.js from the rule's own rect, so it radiates
-   from the line that was actually pressed and not from the middle of the
-   page. Both animated properties are composited, and the glaze underneath is
-   already moving, so this costs nothing the page was not already paying. */
-.touch-bloom {
-  position: absolute;
-  left: var(--bloom-x, 50%);
-  top: var(--bloom-y, 58%);
-  width: 150vmax;
-  height: 150vmax;
-  margin: -75vmax 0 0 -75vmax;
-  background: radial-gradient(closest-side,
-      rgba(255, 250, 242, 0.38),
-      rgba(255, 248, 238, 0.16) 30%,
-      rgba(255, 246, 234, 0.05) 54%,
-      transparent 72%);
-  opacity: 0;
-  transform: scale(0.05);
-  transition: opacity 1.1s ease,
-              transform 1.5s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-
-.touch-layer.is-open .touch-bloom {
-  opacity: 1;
-  transform: scale(1);
-}
-
-/* And the ceramic itself warms. One filter on the layer that is already
-   rasterised as a whole, so the whole cost is the transition: the four blobs
-   underneath are untouched and keep drifting on exactly the cycles they were
-   on. Saturation rather than brightness, because what the glaze has and the
-   rest of this page does not is hue, and the card wants to be opened into
-   somewhere warmer than the page it left.
-
-   Not on the low tier. Section 12 holds that glaze perfectly still precisely
-   so it collapses to ONE rasterisation, and re-running a full-viewport blur
-   for 1.15 seconds is the exact bill that tier exists to refuse. */
-html:not(.gpu-low) .glaze { transition: filter 1.15s ease; }
-
-html.touch-open:not(.gpu-low) .glaze {
-  filter: blur(var(--glaze-blur)) saturate(1.7);
-}
-
-/* The film comes back for the form ----------------------------------------
-   By the closing footer the drawing has fully dissolved (ANCHORS ends at
-   t 1.000 and cinema.js fades the canvas out over the last 3% of it), so what
-   is behind this sheet would otherwise be bare ceramic. scripts/touch.js asks
-   scripts/scroll.js to HOLD the film on one frame instead — the pod, the
-   dashboard and the phone at 1:1 — and the canvas is pushed in a little so
-   the three of them open out past the card's edges rather than hiding behind
-   it.
-
-   The transition lives on its own class, not on .touch-open. cinema.js writes
-   the canvas opacity inline on every scrolled frame, and a transition that
-   was live during a scroll would leave the drawing trailing the words. This
-   class is only ever set while the film is held, and is taken off again after
-   the closing fade has finished. */
-html.film-hold #film {
-  transition: opacity 1.1s ease,
-              transform 1.4s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-
-html.film-hold.touch-open #film {
-  transform: translate3d(0, -1vh, 0) scale(1.2);
-}
+/* THE PAGE BEHIND STOPS MOVING, and there is nothing here that stops it.
+   
+   This block used to pause the glaze's drift for as long as the card was up.
+   It does not need to any more: section 4 holds the glaze still on every page
+   at all times, so by the time the card opens the background has already been
+   a still picture for the whole visit.
+   
+   What else used to be here and is gone: a bloom the size of the viewport
+   fading and scaling in, a `saturate()` transition on the glaze (which
+   re-blurs the whole layer for the length of the transition), and a held WebGL
+   frame with the canvas transformed behind the card. All of them were paid for
+   in continuous GPU time to decorate a page that is being covered up. The open
+   card now starts nothing at all. */
 
 /* The growing rectangle ---------------------------------------------------- */
 .touch-plate {
@@ -1364,8 +1272,6 @@ html.film-hold.touch-open #film {
   border: 1px solid color-mix(in srgb, var(--ink) 16%, transparent);
   background: var(--card-fill);
   box-shadow: 0 1.6rem 3.4rem -1.6rem color-mix(in srgb, var(--ink) 24%, transparent);
-  -webkit-backdrop-filter: blur(26px) saturate(1.3);
-  backdrop-filter: blur(26px) saturate(1.3);
   pointer-events: none;
 }
 
@@ -1394,25 +1300,19 @@ html.film-hold.touch-open #film {
   border-color: color-mix(in srgb, var(--ink) 16%, transparent);
   background: var(--card-fill);
   box-shadow: 0 1.6rem 3.4rem -1.6rem color-mix(in srgb, var(--ink) 24%, transparent);
-  -webkit-backdrop-filter: blur(26px) saturate(1.3);
-  backdrop-filter: blur(26px) saturate(1.3);
 }
 
-/* One rasterisation of the glaze is already this tier's whole budget; a live
-   backdrop pass over a card-sized region on top of it is not affordable.
-   --card-fill is what both the plate and the landed sheet read, so opting out
-   here opts both of them out together and they stay identical. */
-.gpu-low {
-  --card-fill: color-mix(in srgb, var(--porcelain) 94%, white);
-}
+/* No .gpu-low branch here any more, and that is the point: with no filter on
+   either box there is nothing for the low tier to opt out of. One card, one
+   fill, every machine. */
 
-.gpu-low .touch-plate,
-.gpu-low .touch-sheet.is-landed,
-.gpu-low .touch-sheet--static {
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-
+/* Asymmetric on purpose. Landing is instant, because the content has its own
+   arrival beats to play (the title's body-reveal, the question's step-in) and
+   a fade under them would be a second, slower fade over the top of the first.
+   Leaving is a real 0.18s fade, because the close used to be a hard cut: the
+   body went to opacity 0 and the card's chrome vanished with it on the same
+   frame, leaving 150ms of empty page before the plate appeared to collapse.
+   That gap was the glitch on the way out. */
 .touch-sheet__body {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1420,12 +1320,14 @@ html.film-hold.touch-open #film {
   min-height: 0;
   opacity: 0;
   pointer-events: none;
+  transition: opacity 0.18s ease;
 }
 
 .touch-sheet.is-landed .touch-sheet__body,
 .touch-sheet--static .touch-sheet__body {
   opacity: 1;
   pointer-events: auto;
+  transition: opacity 0s;
 }
 
 /* Not the statement on screen — the question under it is. This is the line
@@ -1468,7 +1370,7 @@ html.film-hold.touch-open #film {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.3s ease, background 0.3s ease;
+  transition: opacity 0.18s ease, background 0.3s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -1476,6 +1378,7 @@ html.film-hold.touch-open #film {
 .touch-sheet--static .touch-close {
   opacity: 0.4;
   pointer-events: auto;
+  transition: opacity 0s, background 0.3s ease;
 }
 
 .touch-sheet.is-landed .touch-close:hover,
@@ -1506,11 +1409,12 @@ html.film-hold.touch-open #film {
    and this page is not the film page — it is the one surface on this site
    whose only job is to be a form.
 
-   Which means the card stops pretending to be glass. --card-fill and the
-   backdrop blur exist to let the drawing and the ceramic show through a pane;
-   over flat white there is nothing to show through and nothing to blur, so
-   the card is simply a white panel with an edge, and the two translucent
-   fills inside it — the choices and the CTA — need a real one. */
+   The card is already an opaque panel everywhere (see --card-fill), so all
+   this page changes is its colour: --card-fill is a warm porcelain, and on
+   flat white a warm panel reads as dirty rather than as material. White on
+   white, with the edge and the shadow doing the work. The two translucent
+   fills inside it — the choices and the CTA — need a real one here for the
+   same reason. */
 
 .page--plain {
   background-color: #fff;
@@ -1520,8 +1424,6 @@ html.film-hold.touch-open #film {
   border-color: color-mix(in srgb, var(--ink) 14%, transparent);
   background: #fff;
   box-shadow: 0 1.4rem 3rem -1.8rem color-mix(in srgb, var(--ink) 22%, transparent);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
 }
 
 .page--plain .touch__choice { background: color-mix(in srgb, var(--ink) 3%, transparent); }
@@ -1603,9 +1505,14 @@ html.film-hold.touch-open #film {
   min-height: 0;
 }
 
+/* Row order is the reading order: how far along, then the question, then the
+   way forward. The ticks used to sit under the actions, at the foot of the
+   card, which is the last place anyone looks and the wrong place to answer
+   "how much of this is left" — that is a question asked before starting, not
+   after finishing. */
 .touch__form {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: clamp(0.7rem, 1.8vw, 1.1rem);
   min-height: 0;
   text-align: center;
@@ -1829,11 +1736,13 @@ html.film-hold.touch-open #film {
   grid-row: 2;
 }
 
-/* The station index again, on its side and one tick per question. Length
-   carries the state here for the same reason it does there: the mark still
-   reads in greyscale, and the row still says how much is left. */
+/* The station index again, on its side and one tick per question, sitting at
+   the head of the card under the title. Length carries the state here for the
+   same reason it does there: the mark still reads in greyscale, and the row
+   still says how much is left. */
 .touch__ticks {
   display: flex;
+  align-items: center;
   justify-content: center;
   gap: 0.34rem;
   min-height: 2px;

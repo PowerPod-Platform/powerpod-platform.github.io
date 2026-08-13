@@ -41,12 +41,29 @@ python3 -m http.server 8000
 # http://localhost:8000
 ```
 
+## The glaze is static, everywhere
+
+Four oversized colour fields under one full-viewport
+`filter: blur(clamp(40px, 6vmax, 70px))` (styles/site.css section 4). They used to
+drift on mutually prime 29-to-61-second cycles, and that was by a wide margin the
+most expensive thing this site did: a blur whose input moves can never be cached,
+so the layer was re-rasterised every frame, on every page, forever — including on
+an idle page nobody was looking at.
+
+Held still it collapses to one rasterisation, reused for the life of the page, and
+the per-frame cost of the background is zero. Same four blobs, same blur radius,
+same colours, same oversized container, same sheen. The same picture, not a moving
+one. Every blob sits at opacity 1, which is the most saturated the glaze ever got;
+that is the composition now, not a frame sampled out of a loop.
+
+The film and the chapter transitions are untouched by this and always were.
+
 ## The shape of the page
 
 Two things ride one scroll: a **film** (a fixed, transparent WebGL canvas
 drawing the real pod as hidden-line wireframe) and the **copy** (thirteen
 chapters crossfading in a sticky stage). The ceramic glaze is the background
-for both and never resets.
+for both, and it is a still picture — see below.
 
 Position is measured in **chapter units**:
 
@@ -161,7 +178,9 @@ Three things hold that together and none of them is optional:
   at a time**: a card sized to nine fields would be a scrolling column, and a
   card that resized between questions would have no target rect to aim at.
   Every question is laid out to fit this box, the longest being the four-option
-  `primaryGoal`. Change `--card-h` and check that one.
+  `primaryGoal`. Change `--card-h` and check that one. The progress ticks sit
+  at the **head** of the card, under the title: "how much is left" is asked
+  before starting, not after finishing.
 - **The plate animates geometry, not a transform.** Scaling the sheet is
   cheaper and is what this used to do; a non-uniform scale smears the 1px
   border to a fraction of a pixel on two sides and turns the corner radius into
@@ -172,21 +191,51 @@ Three things hold that together and none of them is optional:
   On one clock, the ink is still most of the fill when the rectangle is already
   a third grown, and what opens in the middle of the page is a grey slab.
 
-Behind it, the film comes back. By the closing footer the drawing has fully
-dissolved, so `scripts/touch.js` asks `window.PPFilm.hold(t, dim, lift)` —
-exposed by `scripts/scroll.js` — to pin the feed on **one** frame, t 0.968,
-with `.film-hold` on `<html>` pushing the canvas in so the pod sits above the
-card and the two devices in the bottom corners. It is a held frame, not a loop:
-`scroll.js` keeps the only rAF in the page, skips the film while `held` is set,
-and re-renders that frame itself on a resize.
+### The open card costs nothing to hold
 
-The veil is deliberately almost nothing. Every wash strong enough to read as a
-scrim took the colour out of the glaze with it; what separates the card from
-the page is the card. The glaze warms instead (`saturate(1.7)`, high tier only)
-and a bloom is thrown from the underline's own rect.
+It is a popup over the last page of the film, and while it is up **that page
+stops moving**:
+
+- **The background was already still.** The glaze does not drift on any page
+  (section 4), so opening the card has nothing to stop. It used to pause the
+  drift for the duration; that rule is gone with the drift.
+- **There is no `backdrop-filter` in section 15.** A translucent card over a
+  live backdrop is a full re-blur of a card-sized region every frame the
+  backdrop changes. `--card-fill` is opaque; the card is a flat fill with an
+  edge and a shadow. This is also why there is no `.gpu-low` branch for the
+  card any more: there is nothing left to opt out of.
+- **Nothing is started.** No held WebGL frame, no `saturate()` transition on
+  the glaze, no viewport-sized bloom. All three existed, all three were
+  continuous GPU time spent decorating a page that is covered up.
+
+The veil is one static gradient at one opacity transition: a whisper at the
+outer edge so the frame has somewhere to end.
+
+### Closing, in the only order that works
+
+`.is-landed` carries the card's border, fill and shadow. Taking it off first
+removed all three on that frame, while the plate that inherits them was still
+`hidden` until `morph()` ran `CONTENT_OUT` later — so the card did not shrink,
+it blinked: 150ms of empty page, then a full-size rectangle appearing from
+nowhere to collapse.
+
+So the rectangle exists before the card stops being one. `rest()` parks the
+plate on the sheet's measured rect and shows it while the sheet still has its
+chrome; `.is-landed` then comes off on a frame where two identical rectangles
+are stacked and one is removed. Nothing changes on screen. Only then does the
+content fade (0.18s, and `.is-landed` sets `transition: opacity 0s` so landing
+stays instant under the content's own arrival beats), and only then does the
+geometry move. `.touch-open` comes off last, not first.
 
 ## Things that will bite if changed
 
+- **Nothing in the glaze may animate again, and `will-change` counts.** Both
+  halves come back together or not at all: the animations are what move the
+  blur's input, and `will-change` is what keeps each blob on its own composited
+  layer, which is what stops five layers feeding a filter from ever being
+  cacheable. Adding either one back re-introduces a full-viewport blur
+  re-rasterised every frame, on every page, forever. That is the entire cost
+  freezing it removed.
 - **`overflow-x: clip` on `body` must not become `hidden`.** `hidden` makes the
   body a scroll container, which silently breaks `position: sticky` on every
   descendant and defeats the entire reel.

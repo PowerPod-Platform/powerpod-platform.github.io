@@ -270,7 +270,9 @@ function renderForm(mount, schema, db) {
   const live = el('p', { className: 'touch__live', role: 'status', 'aria-live': 'polite' });
 
   actions.append(back, submit, formError);
-  form.append(step, actions, ticks, live);
+  /* Ticks first: they are the head of the card, above the question, not a
+     footnote under the buttons. .touch__form's rows are in this order too. */
+  form.append(ticks, step, actions, live);
 
   let current = -1;
   let sending = false;

@@ -169,34 +169,6 @@
     html.classList.add('film-live');
   }
 
-  /* THE HOLD.
-     Somewhere other than the scroll may want the drawing: scripts/touch.js
-     brings it back for the Get in touch card, where the reel has run out and
-     the film has dissolved to nothing. It does not get a rAF loop of its own —
-     there is one in this page and it is below — it gets to pin the feed on a
-     frame. While `held` is set the loop leaves the film alone and resize()
-     re-renders that same frame, so the whole cost of the hold is one render on
-     the way in and one on the way out.
-
-     Deliberately not a queue and not a stack: one film, one holder. */
-  var held = null;
-
-  window.PPFilm = film ? {
-    hold: function (t, dim, lift) {
-      held = { t: t, dim: dim, lift: lift };
-      film.frame(t, dim, lift);
-    },
-    release: function () {
-      if (!held) return;
-      held = null;
-      /* Straight back onto the scroll's own frame, which at the footer is the
-         dissolved one. Written here rather than left to the loop: the loop
-         only runs while something is moving, and nothing is. */
-      var u = clamp(uAtY(window.scrollY), 0, count);
-      film.frame(remap(u), dimAt(u), liftAt(u));
-    }
-  } : null;
-
   /* =====================================================================
      GEOMETRY
      ===================================================================== */
@@ -234,11 +206,7 @@
     // after this file, so this is re-read on the first frame and every resize
     // rather than decided once at startup.
     pinned = getComputedStyle(stage).position === 'sticky';
-    if (!film) return;
-    film.resize();
-    /* A resized framebuffer holds nothing. The loop repaints it for a scrolled
-       page on its very next frame, but a held one has no next frame coming. */
-    if (held) film.frame(held.t, held.dim, held.lift);
+    if (film) film.resize();
   }
 
   /* Where a page comes to rest, in scroll pixels.
@@ -568,7 +536,7 @@
     var u = clamp(Number.isFinite(v) ? v : 0, 0, count);
     markIndex(u);
 
-    if (film && !held) {
+    if (film) {
       film.frame(remap(u), dimAt(u), liftAt(u));
       /* Fed only from here, and only when there is a film to draw: this loop
          runs while something is actually moving, so these are frames under

@@ -1,25 +1,30 @@
 /* PowerPod Platform — the performance tier.
  *
- * One question, answered once: can this machine composite a moving,
- * 70px-blurred, larger-than-viewport colour field at 60fps while a WebGL
- * canvas redraws underneath it?
+ * One question, answered once: can this machine composite this page's
+ * full-screen pixel work at 60fps while a WebGL canvas redraws underneath it?
  *
  * Almost none of this page's cost is geometry. The drawing is a few thousand
  * line vertices and is effectively free. The cost is full-screen pixel work,
- * and there are three passes of it stacked on each other: the glaze's blur,
- * the grain's multiply blend, and the film's own multisampled framebuffer. A
- * current GPU absorbs all three. A 2013 integrated one cannot, and the
- * symptom is a page that stutters even when nobody is touching it — because
- * the glaze drifts forever, and a blur whose input moves can never be cached.
+ * and two passes of it are stacked on each other: the grain's multiply blend,
+ * and the film's own multisampled framebuffer. A current GPU absorbs both. A
+ * 2013 integrated one cannot.
  *
- * THE LOW TIER REMOVES NOTHING. The glaze keeps its blur, its colours, its
- * geometry and its size; it simply stops drifting, which turns a surface that
- * must be re-blurred every frame into one rasterised once and reused for the
- * life of the page. Nothing is smaller, softer, flatter or missing. It is the
- * same picture, held still, and at 29-to-61-second cycles a visitor who never
- * sees the other tier cannot tell which one they are on. That is the entire
- * design goal: a slow machine gets a page that looks identical and runs,
- * never a visibly cheaper page that advertises the machine's age.
+ * There used to be a third and larger pass, and this file mostly existed to
+ * remove it: the glaze drifted forever, and a blur whose input moves can never
+ * be cached, so the background was re-rasterised every frame on every page even
+ * while it sat idle. The glaze is now held still for everybody (styles/site.css
+ * section 4), which means an idle page has nothing moving on it at all and the
+ * watchdog below only ever samples during a scroll — scripts/scroll.js feeds
+ * sample() from inside the film loop, and that loop runs only while something
+ * is moving.
+ *
+ * THE LOW TIER REMOVES NOTHING. It trades two things a visitor cannot read: the
+ * grain's blend mode, which over a backdrop this light is the same arithmetic
+ * either way, and the film's framebuffer scale, which costs resolution on 1px
+ * lines rather than lines. Nothing is smaller, softer, flatter or missing, and
+ * a visitor who never sees the other tier cannot tell which one they are on.
+ * That is the entire design goal: a slow machine gets a page that looks
+ * identical and runs, never a visibly cheaper page that advertises its age.
  *
  * Two things decide the tier, in this order:
  *
@@ -151,8 +156,9 @@
 
   function apply() {
     /* One class, and everything that hangs off the tier hangs off it — the
-       glaze's drift and the grain's blend mode in styles/site.css, the film's
-       framebuffer scale through pixelRatio() below. */
+       grain's blend mode in styles/site.css section 12, and the film's
+       framebuffer scale through pixelRatio() below. The glaze used to be the
+       third; it is held still on every tier now and reads no class. */
     if (tier === 'low') html.classList.add('gpu-low');
     else html.classList.remove('gpu-low');
   }

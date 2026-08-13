@@ -24,9 +24,11 @@
  * the same --card-fill — and the plate is hidden on the same frame at the same
  * rect. The handover is two identical rectangles, so there is nothing to see.
  *
- * Behind it, the film is held on one frame (see PPFilm in scripts/scroll.js):
- * by the closing footer the drawing has fully dissolved, and bare ceramic is
- * not what should be behind this.
+ * Behind it, nothing happens. The page the card opens over is the page that
+ * was already there, and it was already still: the glaze does not drift on any
+ * page any more (styles/site.css section 4), so there is nothing for opening
+ * the card to stop and neither file starts anything of its own. A form is a
+ * popup over the last page of the film, not a second film.
  *
  * href="contact.html" on the origin is the real destination. This file only
  * intercepts when it can. JavaScript off still navigates.
@@ -35,7 +37,7 @@
   'use strict';
 
   /* NOT the house curve. cubic-bezier(0.2, 0.7, 0.2, 1) is what the index
-     ticks, the veil and the bloom all use, and it is heavily front-loaded: a
+     ticks and the veil both use, and it is heavily front-loaded: a
      third of the distance in the first tenth of the time. That is right for a
      tick changing length and wrong for the one move on this page whose whole
      point is legibility, because it means the rectangle is two hundred pixels
@@ -52,27 +54,6 @@
   /* The ink of the underline giving way to ceramic. See morph(). */
   var SKIN_MS = 150;
   var CONTACT_SRC = 'scripts/vendor/contact.min.js';
-
-  /* The frame the film is held on. ANCHORS in scripts/scroll.js puts t 0.952
-     at the pod, the dashboard and the phone at 1:1 and t 0.972 at all three
-     receding; 0.968 is late in that recession, and it is the only place in the
-     film where the three subjects are both small enough to fit around a card
-     and far enough apart to frame it. Chosen with the card in front of it, not
-     off the anchor table: at 0.952 the trio is too large and the pod is
-     entirely behind the sheet, and by 0.98 cinema.js has started the final
-     dissolve.
-
-     The css transform in .film-hold does the rest — a 1.2 push-in that puts
-     the pod's handle just above the card's top edge and the two devices in the
-     bottom corners.
-
-     dim well under 1: this is what is behind the form, not what is being read.
-     lift 0: the subject belongs in the middle of the frame here, as it does
-     under the hero and the roster, not lifted clear of a band of copy that is
-     not there. */
-  var FILM_T = 0.968;
-  var FILM_DIM = 0.85;
-  var FILM_OUT_MS = 1400;   /* covers the longest transition in film-hold */
 
   var html = document.documentElement;
   var origin = document.getElementById('touch-origin');
@@ -92,7 +73,6 @@
   var lastFocus = null;
   var player = null;      // the geometry player, the one that owns onfinish
   var players = [];       // every player on the plate, for cancelling
-  var filmTimer = 0;
   var closeTimer = 0;
 
   /* ---------------------------------------------------------------------
@@ -226,9 +206,27 @@
      a card. It gets its own 190ms instead, so the ink turns to ceramic while
      the thing is still recognisably a line, and the reverse happens at the end
      of the close rather than the start. */
+  /* The plate parked at a rect with no animation on it, wearing exactly what
+     CSS gives it — which is the same fill, border, radius and shadow the
+     landed sheet has. Used to take the card's place before the card stops
+     being one. */
+  function rest(r) {
+    stopPlayers();
+    plate.removeAttribute('hidden');
+    plate.style.left = r.left + 'px';
+    plate.style.top = r.top + 'px';
+    plate.style.width = r.width + 'px';
+    plate.style.height = r.height + 'px';
+  }
+
   function morph(from, to, opening, done) {
     stopPlayers();
     plate.removeAttribute('hidden');
+    /* rest() may have written inline geometry. An animation with fill:'both'
+       out-ranks inline styles, so this is housekeeping rather than a fix — but
+       it keeps the plate's resting state and its animated state from being two
+       different descriptions of the same box. */
+    plate.style.cssText = '';
 
     var line = opening ? from : to;
     var card = opening ? to : from;
@@ -250,29 +248,6 @@
       stopPlayers();
       if (done) done();
     };
-  }
-
-  /* ---------------------------------------------------------------------
-     THE FILM
-
-     One held frame, not a loop: scripts/scroll.js keeps the only rAF in the
-     page and re-renders this frame by itself on a resize. The opacity written
-     inline by cinema.js is what the .film-hold transition in styles/site.css
-     picks up, which is why the class goes on first and comes off last.
-     --------------------------------------------------------------------- */
-  function filmHold() {
-    if (!window.PPFilm) return;
-    window.clearTimeout(filmTimer);
-    html.classList.add('film-hold');
-    window.PPFilm.hold(FILM_T, FILM_DIM, 0);
-  }
-
-  function filmRelease() {
-    if (!window.PPFilm) return;
-    window.PPFilm.release();
-    filmTimer = window.setTimeout(function () {
-      html.classList.remove('film-hold');
-    }, FILM_OUT_MS);
   }
 
   /* ---------------------------------------------------------------------
@@ -329,6 +304,7 @@
     morphing = 0;
     sheet.classList.add('is-landed');
     plate.setAttribute('hidden', '');
+    plate.style.cssText = '';
     isOpen = true;
     busy = false;
     focusFirst();
@@ -337,6 +313,7 @@
   function finishClose() {
     morphing = 0;
     plate.setAttribute('hidden', '');
+    plate.style.cssText = '';
     layer.setAttribute('hidden', '');
     origin.setAttribute('aria-expanded', 'false');
     busy = false;
@@ -353,12 +330,7 @@
     lastFocus = document.activeElement;
     loadContact();
 
-    /* The bloom is thrown from the line, so its origin is measured before the
-       origin is faded and while the rule is still where it was pressed. */
     var line = rectOf(rule);
-    layer.style.setProperty('--bloom-x', (line.left + line.width / 2) + 'px');
-    layer.style.setProperty('--bloom-y', (line.top + line.height / 2) + 'px');
-
     layer.removeAttribute('hidden');
     sheet.classList.remove('is-landed');
     /* One forced layout, deliberately: the card has to be measured in its
@@ -369,30 +341,47 @@
     html.classList.add('touch-open');
     layer.classList.add('is-open');
     origin.setAttribute('aria-expanded', 'true');
-    filmHold();
     waiting();
 
     morph(line, card, true, land);
   }
 
+  /* THE CLOSE, IN THE ONLY ORDER THAT WORKS.
+     What used to happen: `.is-landed` came off, which took the card's border,
+     fill and shadow away on that frame — and the plate that is supposed to
+     inherit them was still `hidden`, because morph() does not run until
+     CONTENT_OUT later. So the card did not shrink, it BLINKED: 150ms of empty
+     page, then a full-size rectangle appearing from nowhere to collapse. That
+     was the glitch.
+
+     The rectangle now exists before the card stops being one. The plate is
+     placed over the sheet's exact rect and shown while the sheet is still
+     wearing its chrome, so the frame where `.is-landed` comes off is a frame
+     where two identical rectangles are stacked and one of them is removed.
+     Nothing changes on screen. Only then does the content fade, and only then
+     does the geometry start moving. */
   function closeSheet() {
     if (!isOpen || busy) return;
     busy = true;
     morphing = -1;
     isOpen = false;
-    /* .touch-open comes off at the top of the close, not the bottom: the
-       underline fades back in over 0.45s while the plate spends 0.52s
-       collapsing onto it, so the line the visitor gets back is the one the
-       rectangle just turned into. `scrollbar-gutter: stable` on html (section
-       3) is what stops that same statement shifting the page sideways. */
-    sheet.classList.remove('is-landed');
-    html.classList.remove('touch-open');
-    layer.classList.remove('is-open');
-    filmRelease();
 
+    /* Measured first, before a single class changes, so nothing that reflows
+       can move the rect out from under the plate. */
     var card = rectOf(sheet);
+    rest(card);
+    sheet.classList.remove('is-landed');
+    origin.setAttribute('aria-expanded', 'false');
+
     closeTimer = window.setTimeout(function () {
       closeTimer = 0;
+      /* Late, not early. Taking .touch-open off starts the footer coming back
+         (delayed in section 10 to land with the plate) and unlocks the scroll;
+         doing it at the top of the close would have both happening under a
+         card that is still fully drawn. `scrollbar-gutter: stable` on html is
+         what stops the unlock shifting the page sideways. */
+      html.classList.remove('touch-open');
+      layer.classList.remove('is-open');
       morph(card, rectOf(rule), false, finishClose);
     }, CONTENT_OUT);
   }
