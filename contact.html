@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#faf8f5">
+
+  <title>Get in touch · PowerPod Platform™</title>
+  <meta name="description" content="A few questions and we'll come back to you.">
+
+  <link rel="preload" href="fonts/DMSans-Variable-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles/site.css">
+
+  <!-- Fallback for no-JS on the film page (the origin keeps href="contact.html").
+       The same card and the same one-question-at-a-time form, on the same
+       glaze, with no film to hold behind it and no underline to grow out of.
+       firebase.min.js must load before contact.min.js so this bundle can take
+       window.PPFirebase.app. -->
+  <script src="scripts/perf.js" defer></script>
+  <script src="scripts/vendor/firebase.min.js" defer></script>
+  <script src="scripts/vendor/contact.min.js" defer></script>
+</head>
+<body>
+
+  <div class="glaze" aria-hidden="true">
+    <div class="glaze__blob glaze__blob--blush"></div>
+    <div class="glaze__blob glaze__blob--celadon"></div>
+    <div class="glaze__blob glaze__blob--periwinkle"></div>
+    <div class="glaze__blob glaze__blob--clay"></div>
+    <div class="glaze__sheen"></div>
+  </div>
+
+  <div class="grain" aria-hidden="true"></div>
+
+  <main class="touch">
+    <div class="touch-sheet touch-sheet--static">
+      <div class="touch-sheet__body">
+        <h1 class="touch-sheet__title">A few questions and we'll come back to you</h1>
+        <div id="touch-mount" class="touch__mount">
+          <!-- Replaced by the form when the schema lands. On the film page
+               scripts/touch.js paints the same three ticks itself. -->
+          <div class="touch__wait" aria-hidden="true"><span></span><span></span><span></span></div>
+          <noscript>
+            <p class="touch__status">This form needs JavaScript.</p>
+          </noscript>
+        </div>
+      </div>
+    </div>
+    <p class="touch__status">
+      <a href="index.html">PowerPod Platform</a>
+    </p>
+  </main>
+
+</body>
+</html>

@@ -32,6 +32,14 @@
   <script src="scripts/cinema.js" defer></script>
   <script src="scripts/scroll.js" defer></script>
   <script src="scripts/reel.js" defer></script>
+  <!-- Vendored from scripts/firebase.js via `npm run build:firebase`. Loaded
+       last and deferred so Firebase's parse cost can never delay the film;
+       exposes window.PPFirebase.{app,analyticsReady}. Firestore is not in
+       this file; scripts/touch.js injects it the first time Get in touch is
+       opened. -->
+  <script src="scripts/vendor/firebase.min.js" defer></script>
+  <!-- Morphs Get in touch. No Firebase. Contact/Firestore is injected on tap. -->
+  <script src="scripts/touch.js" defer></script>
 </head>
 <body>
 
@@ -278,11 +286,31 @@
 
   <footer class="closing">
     <p class="closing__mark">PowerPod Platform<span class="wordmark__tm">™</span></p>
-    <p class="closing__line" data-placeholder>
-      <!-- TODO: replace with the real contact route. -->
-      <a href="#">Get in touch</a>
+    <p class="closing__line">
+      <a href="contact.html" class="touch-origin" id="touch-origin" aria-expanded="false" aria-controls="touch-layer">
+        Get in touch
+        <span class="touch-origin__rule" aria-hidden="true"></span>
+      </a>
     </p>
   </footer>
+
+  <!-- Get in touch. The card is laid out here, at rest, in its final size;
+       scripts/touch.js grows .touch-plate out of the underline's own rect and
+       into it, then hands the chrome over to the sheet on landing. The plate
+       is empty on purpose: it is a rectangle, not a container. -->
+  <div class="touch-layer" id="touch-layer" hidden>
+    <div class="touch-veil" id="touch-veil" aria-hidden="true">
+      <span class="touch-bloom"></span>
+    </div>
+    <div class="touch-plate" id="touch-plate" aria-hidden="true" hidden></div>
+    <div class="touch-sheet" id="touch-sheet" role="dialog" aria-modal="true" aria-labelledby="touch-title" tabindex="-1">
+      <div class="touch-sheet__body">
+        <h2 class="touch-sheet__title" id="touch-title">A few questions and we'll come back to you</h2>
+        <div id="touch-mount" class="touch__mount"></div>
+      </div>
+      <button class="touch-close" id="touch-close" type="button" aria-label="Close"></button>
+    </div>
+  </div>
 
 </body>
 </html>

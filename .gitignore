@@ -5,4 +5,5 @@
 PP_ASM_V1.obj
 PP_ASM_V1.mtl
 node_modules/
+.firebase/
 *.tmp.glb

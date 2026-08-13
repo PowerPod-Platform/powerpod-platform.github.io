@@ -169,6 +169,34 @@
     html.classList.add('film-live');
   }
 
+  /* THE HOLD.
+     Somewhere other than the scroll may want the drawing: scripts/touch.js
+     brings it back for the Get in touch card, where the reel has run out and
+     the film has dissolved to nothing. It does not get a rAF loop of its own —
+     there is one in this page and it is below — it gets to pin the feed on a
+     frame. While `held` is set the loop leaves the film alone and resize()
+     re-renders that same frame, so the whole cost of the hold is one render on
+     the way in and one on the way out.
+
+     Deliberately not a queue and not a stack: one film, one holder. */
+  var held = null;
+
+  window.PPFilm = film ? {
+    hold: function (t, dim, lift) {
+      held = { t: t, dim: dim, lift: lift };
+      film.frame(t, dim, lift);
+    },
+    release: function () {
+      if (!held) return;
+      held = null;
+      /* Straight back onto the scroll's own frame, which at the footer is the
+         dissolved one. Written here rather than left to the loop: the loop
+         only runs while something is moving, and nothing is. */
+      var u = clamp(uAtY(window.scrollY), 0, count);
+      film.frame(remap(u), dimAt(u), liftAt(u));
+    }
+  } : null;
+
   /* =====================================================================
      GEOMETRY
      ===================================================================== */
@@ -206,7 +234,11 @@
     // after this file, so this is re-read on the first frame and every resize
     // rather than decided once at startup.
     pinned = getComputedStyle(stage).position === 'sticky';
-    if (film) film.resize();
+    if (!film) return;
+    film.resize();
+    /* A resized framebuffer holds nothing. The loop repaints it for a scrolled
+       page on its very next frame, but a held one has no next frame coming. */
+    if (held) film.frame(held.t, held.dim, held.lift);
   }
 
   /* Where a page comes to rest, in scroll pixels.
@@ -536,7 +568,7 @@
     var u = clamp(Number.isFinite(v) ? v : 0, 0, count);
     markIndex(u);
 
-    if (film) {
+    if (film && !held) {
       film.frame(remap(u), dimAt(u), liftAt(u));
       /* Fed only from here, and only when there is a film to draw: this loop
          runs while something is actually moving, so these are frames under
@@ -577,10 +609,16 @@
     return Math.max(0, document.documentElement.scrollHeight - innerHeight);
   }
 
+  /* The Get in touch card locks the document with `overflow: hidden`, so a
+     wheel or an arrow key over it is not a scroll of this page at all. Every
+     handler below leaves it alone rather than taking the gesture, cancelling
+     its default and then writing a scroll position the root cannot honour. */
+  function modal() { return html.classList.contains('touch-open'); }
+
   addEventListener('wheel', function (e) {
     // ctrl+wheel is zoom, on a trackpad and on a mouse alike. It is not a
     // scroll and it is not ours to take.
-    if (e.ctrlKey) return;
+    if (e.ctrlKey || modal()) return;
     cancelAssist();
     if (busy) { busy = false; beatMode = false; }
     var d = e.deltaY;
@@ -607,7 +645,7 @@
   }
 
   addEventListener('keydown', function (e) {
-    if (!engaged() || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!engaged() || modal() || e.metaKey || e.ctrlKey || e.altKey) return;
     var k = e.key, dir = 0, to = -1;
     if (k === 'ArrowDown' || k === 'PageDown') dir = 1;
     else if (k === 'ArrowUp' || k === 'PageUp') dir = -1;
@@ -768,7 +806,7 @@
   function considerAssist() {
     if (!assistArmed) return;
     assistArmed = false;                 // once per stop, whatever happens next
-    if (!pinned || released || busy || wheelTarget !== null) return;
+    if (!pinned || released || busy || modal() || wheelTarget !== null) return;
 
     var u = uAtY(window.scrollY);
     if (!(u > 0) || u >= count) return;  // above the reel, or out into the footer

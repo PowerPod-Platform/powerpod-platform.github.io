@@ -1,0 +1,122 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: config
+// Document ID: form  (exactly one schema document)
+// Public read: yes, by design. A marketing form cannot require login.
+// Public write: no. Admin SDK / console only.
+// Fields:
+//   - version: int (>= 1) - schema generation the client stores on submit
+//   - updatedAt: timestamp
+//   - fields: list of maps
+//       id, label, type, required, maxLength, options[], showIf
+// This document has no PII.
+//
+// Collection: submissions
+// Document ID: auto-id
+// Public read / update / delete: no. Leads are PII (name, email, phone).
+// Public create: yes, shape-validated, App Check enforced in the console.
+// Fields:
+//   - answers: map of field id -> string (option id for selects)
+//   - formVersion: int
+//   - createdAt: timestamp (must be request.time / serverTimestamp)
+//   - source: string, exactly "website"
+//
+// Adding a question later is a config/form write (Admin SDK) plus a rules
+// change if the new field id is not in ANSWER_KEYS below. The website
+// renderer is generic; these rules are the allow-list that keeps public
+// creates from becoming a 1 MiB junk dump.
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isShortString(value, minLen, maxLen) {
+      return value is string
+        && value.size() >= minLen
+        && value.size() <= maxLen;
+    }
+
+    function isValidEmail(value) {
+      return value is string
+        && value.size() >= 3
+        && value.size() <= 254
+        && value.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    function isValidSubmission(data) {
+      return data.keys().hasOnly(['answers', 'formVersion', 'createdAt', 'source'])
+        && data.source == 'website'
+        && data.formVersion is int
+        && data.formVersion >= 1
+        && data.formVersion <= 10000
+        && data.createdAt is timestamp
+        && data.createdAt == request.time
+        && isValidAnswers(data.answers);
+    }
+
+    function isValidAnswers(answers) {
+      return answers is map
+        && answers.keys().hasOnly([
+          'name',
+          'companyName',
+          'designation',
+          'email',
+          'phone',
+          'primaryGoal',
+          'primaryGoalOther',
+          'fleetSize',
+          'targetTimeline'
+        ])
+        && answers.keys().hasAll([
+          'name',
+          'companyName',
+          'designation',
+          'email',
+          'phone',
+          'primaryGoal',
+          'fleetSize',
+          'targetTimeline'
+        ])
+        && isShortString(answers.name, 1, 120)
+        && isShortString(answers.companyName, 1, 160)
+        && isShortString(answers.designation, 1, 120)
+        && isValidEmail(answers.email)
+        && isShortString(answers.phone, 7, 32)
+        && answers.primaryGoal in [
+          'closedFleet',
+          'publicNetwork',
+          'oemIntegrate',
+          'other'
+        ]
+        && answers.fleetSize in ['10-50', '51-200', '200plus']
+        && answers.targetTimeline in ['immediately', '3-6', '6plus']
+        && (
+          answers.primaryGoal == 'other'
+            ? (
+              'primaryGoalOther' in answers
+              && isShortString(answers.primaryGoalOther, 1, 200)
+            )
+            : !('primaryGoalOther' in answers)
+        );
+    }
+
+    match /config/{docId} {
+      allow read: if docId == 'form';
+      allow write: if false;
+    }
+
+    match /submissions/{id} {
+      allow read, update, delete: if false;
+      allow create: if isValidSubmission(request.resource.data);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

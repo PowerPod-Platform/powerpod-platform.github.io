@@ -1,24 +1,39 @@
 # PowerPod Platform — website
 
-Static site. No build step, no framework, no third-party request at runtime.
+Static site. No build step for the page itself, no framework, and no
+third-party script served from a third-party origin — the one exception is
+Firebase Analytics, which does call out to Google at runtime (see below).
 
 ```
 index.html                        the page (hero + 12 chapters + footer)
+contact.html                      Get in touch fallback (no film, for no-JS)
 styles/site.css                   sitewide stylesheet
 scripts/scroll.js                 the one scroll controller
 scripts/cinema.js                 the film: scene, choreography, update(t)
 scripts/pod-geometry.js           digitised CAD the film draws
 scripts/reel.js                   copy-animation fallback driver (see below)
+scripts/firebase.js               Firebase app + Analytics init source
+scripts/contact.js                form: schema listener, render, submit
+scripts/touch.js                  Get in touch: underline → card (no Firebase)
 scripts/vendor/three.min.js       three.js r128, vendored
+scripts/vendor/firebase.min.js    Firebase app + Analytics, bundled and vendored
+scripts/vendor/contact.min.js     Firebase + Firestore + form, bundled and vendored
+firestore.rules                   public form schema read, create-only submissions
+firebase.json                     rules-only deploy (Hosting stays GitHub Pages)
 fonts/DMSans-Variable-latin.woff2 DM Sans variable, weights 100–1000
+package.json                      dev-only tooling to rebuild vendored Firebase bundles
 CNAME                             custom domain
 .nojekyll                         disables GitHub Pages' Jekyll processing
 ```
 
 ## Local preview
 
-Serve over HTTP rather than opening the file directly — `file://` origins can
-block the font fetch under CORS rules.
+Serve over HTTP rather than opening the file directly. `file://` origins can
+block the font fetch under CORS rules, and Get in touch does not work there at
+all: the origin is `null`, so Firestore's requests are refused, and a refused
+listener is not an error it reports — `onSnapshot` simply stays pending in
+offline mode. The card opens, the three waiting ticks breathe, and no question
+ever arrives. There is nothing to debug in that; it is the protocol.
 
 ```sh
 python3 -m http.server 8000
@@ -124,10 +139,50 @@ closing footer, since the stage still has its own height to scroll away.
 ## Still placeholder
 
 `grep -n data-placeholder index.html` lists what is not real yet: the member
-roster, and two `href="#"` links (the CTA and the footer contact), both marked
-with `TODO` comments. All other copy is final.
+roster, and the specification CTA. All other copy is final.
 
-**No em dashes in rendered copy.** The commas are deliberate.
+**No em dashes in rendered copy.** The commas are deliberate. This includes
+every string on `contact.html` and every label seeded into `config/form`.
+
+## Get in touch
+
+The underline under `Get in touch` **is** the form. `scripts/touch.js` measures
+`.touch-origin__rule`, lays `.touch-plate` over it at exactly its rect, and
+plays that box's geometry — `left`, `top`, `width`, `height`, corner radius and
+fill — to the card's. On landing the card takes its own chrome, identical to
+the plate's, and the plate is hidden on the same frame at the same rect.
+
+Three things hold that together and none of them is optional:
+
+- **The card is a fixed size** (`--card-w` / `--card-h`, styles/site.css
+  section 2). That is what lets the morph know the rectangle it is growing into
+  before `config/form` has arrived, and it is why the form asks **one question
+  at a time**: a card sized to nine fields would be a scrolling column, and a
+  card that resized between questions would have no target rect to aim at.
+  Every question is laid out to fit this box, the longest being the four-option
+  `primaryGoal`. Change `--card-h` and check that one.
+- **The plate animates geometry, not a transform.** Scaling the sheet is
+  cheaper and is what this used to do; a non-uniform scale smears the 1px
+  border to a fraction of a pixel on two sides and turns the corner radius into
+  an ellipse, and the edge and the corner are the two things anyone watches
+  here.
+- **The fill is on its own clock.** Geometry runs 820ms on a curve that holds
+  the line as a line for the first fifth; the ink → ceramic hand-off runs 150ms.
+  On one clock, the ink is still most of the fill when the rectangle is already
+  a third grown, and what opens in the middle of the page is a grey slab.
+
+Behind it, the film comes back. By the closing footer the drawing has fully
+dissolved, so `scripts/touch.js` asks `window.PPFilm.hold(t, dim, lift)` —
+exposed by `scripts/scroll.js` — to pin the feed on **one** frame, t 0.968,
+with `.film-hold` on `<html>` pushing the canvas in so the pod sits above the
+card and the two devices in the bottom corners. It is a held frame, not a loop:
+`scroll.js` keeps the only rAF in the page, skips the film while `held` is set,
+and re-renders that frame itself on a resize.
+
+The veil is deliberately almost nothing. Every wash strong enough to read as a
+scrim took the colour out of the glaze with it; what separates the card from
+the page is the card. The glaze warms instead (`saturate(1.7)`, high tier only)
+and a bloom is thrown from the underline's own rect.
 
 ## Things that will bite if changed
 
@@ -159,6 +214,83 @@ with `TODO` comments. All other copy is final.
 - **`opacity: 0` does not stop touches.** Chapters are `pointer-events: none` by
   default and only interactive during the hold beat. Without that, the topmost
   transparent chapter swallows every tap on the page.
+- **`display: grid` on `.touch-layer` out-specifies `[hidden]`.** The attribute
+  alone does not close the card; `.touch-layer[hidden] { display: none }` is
+  what does. Without it the close mark sits in the corner of the footer.
+- **`scrollbar-gutter: stable` on `html` is load-bearing.** Opening the card
+  locks the document with `overflow: hidden`. Where scrollbars take real width,
+  that hands back 15px of viewport on the way in and takes it away again on the
+  way out, sliding the page sideways under a rectangle that is in the middle of
+  growing out of one of its own pixels.
+- **The DOM holds one question at a time, so it is not the source of truth.**
+  `values` in `scripts/contact.js` is. `readStep()` is the only write to it.
+
+## Firebase
+
+The site is registered as the `powerpod-platform` Firebase project's web app.
+Analytics runs on the film. Firestore is injected on the first hint that the
+form is wanted — a pointer settling on `Get in touch`, a focus ring landing on
+it, a finger touching it — which is what gives the 820ms morph a chance to
+cover the download. `contact.html` is the no-JS fallback: the same card and the
+same one-question-at-a-time form, with no film to hold behind it and no
+underline to grow out of.
+
+Vendored bundles are **committed**. GitHub Pages serves flat files, so
+`node_modules` is never shipped and there is no build step at deploy time.
+
+```sh
+npm install
+npm run build          # firebase.min.js + contact.min.js
+```
+
+`index.html` loads `scripts/vendor/firebase.min.js` last, deferred: `app` plus
+Analytics, assigned to `window.PPFirebase`. Firestore is not in that file.
+`scripts/touch.js` injects `scripts/vendor/contact.min.js` on the first hover,
+focus or touch of the origin.
+That bundle uses `window.PPFirebase.app` (it must not call `initializeApp`
+again). It listens to `config/form` and writes `submissions/{autoId}` only
+after Send succeeds. The first schema to arrive is the one that renders and the
+listener ignores every later one: re-rendering mid-answer would throw away the
+values already given, and after Send it would throw away the confirmation.
+
+`contact.html` loads `firebase.min.js` then `contact.min.js`, same contract.
+
+Rules live in `firestore.rules` and deploy independently of GitHub Pages:
+
+```sh
+npx -y firebase-tools@latest deploy --only firestore:rules --project powerpod-platform
+```
+
+`config/form` is world-readable (the questions). `submissions` is create-only
+for the client; reads stay with the Admin SDK in Paddock. Prototype rules:
+review them before a public launch.
+
+Seed the schema from the Paddock repo (Admin SDK):
+
+```sh
+npm run seed:powerpod-platform-form
+```
+
+Run that in Central Ledger, not in this repo.
+
+App Check: set `APP_CHECK_SITE_KEY` in `scripts/contact.js` to the reCAPTCHA
+v3 site key from Firebase Console → App Check, rebuild `contact.min.js`, then
+switch Firestore from Monitor to Enforce. Until the key is set, submits still
+work and the quota is protected only by rules.
+
+**Two things worth knowing:**
+
+- The `firebaseConfig` object (`apiKey` included) is meant to be public. It
+  identifies the project to Google's servers, it does not authorize access.
+  Submissions are protected by Firestore Security Rules, not by hiding this
+  file.
+- Analytics calls out to `googletagmanager.com` / `google-analytics.com` at
+  runtime, the one deliberate exception to "no third-party request" above.
+  `scripts/firebase.js` wraps it in `isSupported()` so it resolves to `null`
+  rather than throwing under a tracking blocker, in an unsupported browser, or
+  when the page is opened via `file://`. Before a public launch in a region
+  covered by cookie-consent law (e.g. GDPR), add a consent gate before
+  Analytics initializes. None exists yet.
 
 ## Deploying
 

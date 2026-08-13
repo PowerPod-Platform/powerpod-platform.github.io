@@ -1,0 +1,16 @@
+{
+  "name": "powerpod-platform-website",
+  "private": true,
+  "description": "Build tooling for the PowerPod Platform static site. No app runtime lives here — see README.md.",
+  "scripts": {
+    "build:firebase": "esbuild scripts/firebase.js --bundle --format=iife --global-name=PPFirebase --minify --outfile=scripts/vendor/firebase.min.js",
+    "build:contact": "esbuild scripts/contact.js --bundle --format=iife --minify --outfile=scripts/vendor/contact.min.js",
+    "build": "npm run build:firebase && npm run build:contact"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  },
+  "dependencies": {
+    "firebase": "^11.0.0"
+  }
+}

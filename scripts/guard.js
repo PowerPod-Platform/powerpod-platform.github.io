@@ -59,7 +59,16 @@
      is only reachable from CSS, which is why the guard has a second half in
      styles/site.css section 13.
      --------------------------------------------------------------------- */
+  function isField(el) {
+    if (!el || el.nodeType !== 1) return false;
+    var tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
   window.addEventListener('contextmenu', function (e) {
+    if (isField(e.target)) return;
     e.preventDefault();
   }, CAPTURE);
 
@@ -170,6 +179,9 @@
      else is affected.
      --------------------------------------------------------------------- */
   ['selectstart', 'dragstart', 'copy', 'cut'].forEach(function (type) {
-    window.addEventListener(type, function (e) { e.preventDefault(); }, CAPTURE);
+    window.addEventListener(type, function (e) {
+      if (isField(e.target)) return;
+      e.preventDefault();
+    }, CAPTURE);
   });
 })();
