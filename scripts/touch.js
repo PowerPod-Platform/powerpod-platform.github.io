@@ -68,7 +68,7 @@
 
   var isOpen = false;
   var busy = false;
-  var morphing = 0;     // 1 while growing, -1 while collapsing, 0 at rest
+  var morphing = 0;     // 1/-1 only while a geometry animation is actually live
   var loading = null;
   var lastFocus = null;
   var player = null;      // the geometry player, the one that owns onfinish
@@ -236,6 +236,13 @@
     var skin = [lineSkin(), cardSkin()];
     if (!opening) { geom.reverse(); skin.reverse(); }
 
+    /* Set here rather than at the top of open/close: it means "a geometry
+       animation is live", which is exactly the window the resize handler at the
+       foot of this file is allowed to cut short. The keyboard wait and the
+       content fade are not that window — a resize during either is expected
+       (it is often the keyboard itself) and must not abort the close. */
+    morphing = opening ? 1 : -1;
+
     var run = opening ? OPEN_MS : CLOSE_MS;
     player = plate.animate(geom, { duration: run, easing: EASE, fill: 'both' });
     players.push(player);
@@ -292,6 +299,68 @@
     var y = savedAtBottom ? maxY() : savedY;
     if (Math.abs(window.scrollY - y) < 1) return;
     window.scrollTo({ top: y, left: 0, behavior: 'instant' });
+  }
+
+  /* ---------------------------------------------------------------------
+     THE KEYBOARD
+
+     Opening the card focuses the first question, which on a phone raises the
+     keyboard. That is wanted. Dismissing it is where this used to break.
+
+     A keyboard is a viewport change. Android shrinks innerHeight by its
+     height and fires resize; iOS moves the visual viewport. So the moment the
+     card closes, TWO viewport transitions are in flight at once — the keyboard
+     sliding away and the URL bar coming back as the scroll unlocks — and
+     restoreScroll() below was reading maxY() in the middle of both. It
+     restored against a viewport height that was about to change, landed short
+     of the footer, and left the page on the un-stuck stage with every chapter
+     faded out. Background, and nothing on it.
+
+     So the keyboard goes away FIRST, on its own, and the card does not begin
+     to collapse until the viewport has stopped moving. blur() is what dismisses
+     it on both platforms. Then this waits for visualViewport to go quiet rather
+     than guessing at an animation length, with a hard cap so a browser that
+     never fires the event cannot hang the close.
+
+     Nothing focused, or no keyboard on screen, and this costs one function
+     call and no delay at all — which is every desktop close, and every close
+     from a question whose answer is a set of options rather than typing. */
+  var KEY_QUIET_MS = 120;   /* no viewport change for this long = settled */
+  var KEY_CAP_MS = 520;     /* never wait longer than this, whatever happens */
+  var KEY_BLIND_MS = 260;   /* used only where visualViewport does not exist */
+
+  function typing(el) {
+    return !!(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ||
+                     el.isContentEditable));
+  }
+
+  function afterKeyboard(done) {
+    var el = document.activeElement;
+    if (!typing(el)) { done(); return; }
+    el.blur();
+
+    var vv = window.visualViewport;
+    if (!vv) { window.setTimeout(done, KEY_BLIND_MS); return; }
+
+    var quiet = 0, cap = 0, spent = false;
+
+    function finish() {
+      if (spent) return;
+      spent = true;
+      window.clearTimeout(quiet);
+      window.clearTimeout(cap);
+      vv.removeEventListener('resize', bump);
+      done();
+    }
+
+    function bump() {
+      window.clearTimeout(quiet);
+      quiet = window.setTimeout(finish, KEY_QUIET_MS);
+    }
+
+    vv.addEventListener('resize', bump);
+    bump();   /* start the clock, so a browser that fires nothing still resolves */
+    cap = window.setTimeout(finish, KEY_CAP_MS);
   }
 
   /* ---------------------------------------------------------------------
@@ -370,7 +439,6 @@
     if (e) e.preventDefault();
     if (isOpen || busy) return;
     busy = true;
-    morphing = 1;
     lastFocus = document.activeElement;
     loadContact();
 
@@ -414,31 +482,40 @@
   function closeSheet() {
     if (!isOpen || busy) return;
     busy = true;
-    morphing = -1;
     isOpen = false;
-
-    /* Measured first, before a single class changes, so nothing that reflows
-       can move the rect out from under the plate. */
-    var card = rectOf(sheet);
-    rest(card);
-    sheet.classList.remove('is-landed');
     origin.setAttribute('aria-expanded', 'false');
 
-    closeTimer = window.setTimeout(function () {
-      closeTimer = 0;
-      /* Late, not early. Taking .touch-open off starts the footer coming back
-         (delayed in section 10 to land with the plate) and unlocks the scroll;
-         doing it at the top of the close would have both happening under a
-         card that is still fully drawn. `scrollbar-gutter: stable` on html is
-         what stops the unlock shifting the page sideways. */
-      html.classList.remove('touch-open');
-      /* Before the rule is measured, not after: the plate has to land on the
-         underline where it will actually be, not where it was while the page
-         was locked. */
-      restoreScroll();
-      layer.classList.remove('is-open');
-      morph(card, rectOf(rule), false, finishClose);
-    }, CONTENT_OUT);
+    /* The keyboard goes down before anything else happens, and the card stays
+       fully drawn while it does. Collapsing underneath a keyboard that is still
+       sliding away means measuring rects against a viewport that is still
+       moving, which is the whole of the bug this fixes. See afterKeyboard(). */
+    afterKeyboard(function () {
+      /* Measured now, against the settled viewport, and before a single class
+         changes so nothing that reflows can move the rect out from under the
+         plate. */
+      var card = rectOf(sheet);
+      rest(card);
+      sheet.classList.remove('is-landed');
+
+      closeTimer = window.setTimeout(function () {
+        closeTimer = 0;
+        /* Late, not early. Taking .touch-open off starts the footer coming back
+           (delayed in section 10 to land with the plate) and unlocks the scroll;
+           doing it at the top of the close would have both happening under a
+           card that is still fully drawn. `scrollbar-gutter: stable` on html is
+           what stops the unlock shifting the page sideways. */
+        html.classList.remove('touch-open');
+        /* Before the rule is measured, not after: the plate has to land on the
+           underline where it will actually be, not where it was while the page
+           was locked. */
+        restoreScroll();
+        layer.classList.remove('is-open');
+        /* Re-read rather than reusing `card`: the unlock above can move the
+           sheet if the URL bar came back with it, and the plate must start from
+           where the card actually is on this frame. */
+        morph(rectOf(sheet), rectOf(rule), false, finishClose);
+      }, CONTENT_OUT);
+    });
   }
 
   /* contact.min.js closes the card from its own Sent state, and has no other
@@ -479,7 +556,12 @@
      catching is a resize DURING the morph, where both rects were read before
      the viewport changed and the plate would now be playing to a rectangle
      that has moved. Cut it short and let whichever end it was heading for
-     arrive immediately. */
+     arrive immediately.
+
+     `morphing` is deliberately only set while a player is live, so this does
+     NOT fire during the keyboard wait or the content fade. A resize in those
+     two windows is expected — on a phone it is usually the keyboard itself —
+     and aborting the close there is exactly what must not happen. */
   window.addEventListener('resize', function () {
     if (!morphing) return;
     var opening = morphing > 0;

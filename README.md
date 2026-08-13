@@ -263,6 +263,13 @@ geometry move. `.touch-open` comes off last, not first.
   something has to move the scroll, it goes through `jumpTo()`, which forces
   `behavior: 'instant'` — `html` sets `scroll-behavior: smooth`, so any bare
   `scrollTo()` animates and reads as the page sliding on its own.
+- **The keyboard goes down before the card collapses.** `afterKeyboard()` in
+  `scripts/touch.js` blurs the focused field, waits for `visualViewport` to go
+  quiet, and only then starts the close. A keyboard is a viewport change, so
+  dismissing it at the same moment the scroll unlocks put two viewport
+  transitions in flight at once and every rect was measured in the middle of
+  both — the card landed short of the footer and left the page on the un-stuck
+  stage with every chapter faded out. Nothing focused means no wait at all.
 - **Get in touch records and restores the scroll across its lock.** See
   `rememberScroll()` / `restoreScroll()` in `scripts/touch.js`. A phone brings
   its URL bar back when the root is locked with `overflow: hidden`, which moves
