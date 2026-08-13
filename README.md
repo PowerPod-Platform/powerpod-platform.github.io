@@ -141,6 +141,31 @@ exactly one place, so the two paths cannot drift.
 With neither — no scroll timelines *and* no JavaScript — the page falls back
 to a plain stacked document with all copy visible. Never a blank page.
 
+## The page never moves itself
+
+There is no snap and, as of now, no assist either. A scroll ends exactly where
+the gesture left it, including between two chapters, and the page does not
+adjust itself afterwards for any reason.
+
+`scripts/scroll.js` used to carry an assist: it noticed the visitor coming to
+rest somewhere unresolved — a title mid-settle, body copy nine per cent
+revealed — and after a 650ms dwell finished the beat for them. It was careful
+work (once per stop, never against a gesture, never inside a chapter's hold,
+cancelled by any input) and it was built for touch specifically, on the
+reasoning that a phone has no keys and so a thumb got all of the distance and
+none of the choreography.
+
+On a phone it read as a bug. The sequence is flick, lift, momentum ends, read,
+and then a second later the page slides somewhere you did not ask it to go,
+which is indistinguishable from the site losing its place. It is gone, along
+with `quintic()`, `glideCalm()`, the dwell, the refusal bookkeeping and
+`travelDir`, which existed only to serve it.
+
+The deliberate version of the same idea survives and is the one to build on:
+the **station index**. A tap on it is a discrete, deliberate gesture, so it is
+answered with the full glide — asked for rather than offered. Arrow keys,
+Space, Home and End still page the same way.
+
 ## Adding a section
 
 1. Copy a `<section class="chapter chapter--band">` block in `index.html`,
@@ -233,6 +258,18 @@ geometry move. `.touch-open` comes off last, not first.
 
 ## Things that will bite if changed
 
+- **Nothing may scroll the page that the visitor did not ask for.** The assist
+  was removed for this reason and should not come back in another form. If
+  something has to move the scroll, it goes through `jumpTo()`, which forces
+  `behavior: 'instant'` — `html` sets `scroll-behavior: smooth`, so any bare
+  `scrollTo()` animates and reads as the page sliding on its own.
+- **Get in touch records and restores the scroll across its lock.** See
+  `rememberScroll()` / `restoreScroll()` in `scripts/touch.js`. A phone brings
+  its URL bar back when the root is locked with `overflow: hidden`, which moves
+  what the maximum scroll position is, and iOS may not honour the lock at all.
+  Without the restore, closing the card near the end of the reel lands a few
+  hundred pixels above the footer, on the un-stuck stage with every chapter
+  already faded out — a blank screen.
 - **The grain must never get a `mix-blend-mode` back.** A blend mode on a
   full-viewport element at the top of the stack cannot be composited alone: the
   compositor flattens everything beneath it into one buffer, reads it back and

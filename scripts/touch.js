@@ -74,6 +74,8 @@
   var player = null;      // the geometry player, the one that owns onfinish
   var players = [];       // every player on the plate, for cancelling
   var closeTimer = 0;
+  var savedY = 0;         // the scroll the card was opened from
+  var savedAtBottom = false;
 
   /* ---------------------------------------------------------------------
      THE BUNDLE
@@ -251,6 +253,48 @@
   }
 
   /* ---------------------------------------------------------------------
+     THE SCROLL, ACROSS THE LOCK
+
+     `html.touch-open { overflow: hidden }` is how the page behind is held, and
+     it is not something a phone can be trusted with. Locking the root makes a
+     mobile browser bring its URL bar back, which changes innerHeight, which
+     changes what the maximum scroll position IS — and the card is opened from
+     the very bottom of a nineteen-thousand-pixel document, so "the maximum"
+     is exactly where the visitor was. iOS is worse than that: it does not
+     reliably honour the lock at all, so a drag over the card can move the
+     document underneath it.
+
+     Either way the same thing happens on close: the layer is hidden and the
+     page underneath is no longer where it was left. Near the end of the reel,
+     what is a few hundred pixels above the footer is the un-stuck stage with
+     every chapter already faded out — which is to say, nothing. That is the
+     blank space.
+
+     So the position is not trusted, it is recorded and put back. Bottom-anchored
+     when it was at the bottom, because if the URL bar did come back then the
+     old pixel offset is no longer the bottom and the footer would sit low with
+     a strip of empty stage above it.
+
+     `behavior: 'instant'` is not optional: styles/site.css sets
+     `scroll-behavior: smooth` on html, and without it this restore would
+     animate — the page sliding on its own, which is the other half of what was
+     reported. */
+  function maxY() {
+    return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  }
+
+  function rememberScroll() {
+    savedY = window.scrollY;
+    savedAtBottom = savedY >= maxY() - 2;
+  }
+
+  function restoreScroll() {
+    var y = savedAtBottom ? maxY() : savedY;
+    if (Math.abs(window.scrollY - y) < 1) return;
+    window.scrollTo({ top: y, left: 0, behavior: 'instant' });
+  }
+
+  /* ---------------------------------------------------------------------
      FOCUS
      --------------------------------------------------------------------- */
   /* A radio group is one tab stop, and which member of it that stop lands on
@@ -330,19 +374,26 @@
     lastFocus = document.activeElement;
     loadContact();
 
-    var line = rectOf(rule);
+    rememberScroll();
     layer.removeAttribute('hidden');
     sheet.classList.remove('is-landed');
-    /* One forced layout, deliberately: the card has to be measured in its
-       resting place before .touch-open can move anything, and `hidden` was
-       still on it a statement ago. */
-    var card = rectOf(sheet);
 
+    /* The lock goes on BEFORE either rect is read. Applying it is what may move
+       the page under a phone's returning URL bar, and a line measured on the
+       near side of that would have the rectangle growing out of somewhere the
+       underline no longer is. Nothing in .touch-open changes layout otherwise:
+       the origin and the mark only lose opacity, and `scrollbar-gutter: stable`
+       (section 3) covers the desktop scrollbar. */
     html.classList.add('touch-open');
     layer.classList.add('is-open');
     origin.setAttribute('aria-expanded', 'true');
-    waiting();
 
+    /* One forced layout, deliberately: `hidden` was on the layer a statement
+       ago and the card has to be measured in its resting place. */
+    var line = rectOf(rule);
+    var card = rectOf(sheet);
+
+    waiting();
     morph(line, card, true, land);
   }
 
@@ -381,6 +432,10 @@
          card that is still fully drawn. `scrollbar-gutter: stable` on html is
          what stops the unlock shifting the page sideways. */
       html.classList.remove('touch-open');
+      /* Before the rule is measured, not after: the plate has to land on the
+         underline where it will actually be, not where it was while the page
+         was locked. */
+      restoreScroll();
       layer.classList.remove('is-open');
       morph(card, rectOf(rule), false, finishClose);
     }, CONTENT_OUT);

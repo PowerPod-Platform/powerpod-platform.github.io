@@ -870,12 +870,18 @@ body {
   font-size: var(--step-title);
   font-weight: 500;
   letter-spacing: -0.03em;
-  /* The delay is for coming BACK. Section 15's card collapses onto the
-     underline over about 0.7s after it is dismissed, and a footer that
-     reappears while that is still happening puts the wordmark and the words
-     `Get in touch` underneath a rectangle that is on its way to becoming one
-     of them. The rule below takes the delay off again for going away. */
-  transition: opacity 0.45s ease 0.36s;
+  /* The delay is for coming BACK, and it is timed to LAND WITH the plate, not
+     after it. Section 15's rectangle is dismissed at t=0 and finishes
+     collapsing onto the underline at about t=710ms (150ms for the content to
+     leave, then a 560ms morph); .touch-open comes off at t=150, so 160ms of
+     delay plus a 400ms fade puts the wordmark back at exactly 710.
+
+     It used to be 360ms of delay plus 450ms of fade, which finished at 960 —
+     a quarter of a second after the rectangle had gone. On a desktop that is a
+     beat. On a phone, where the card is the whole screen, it is a quarter of a
+     second of blank page, and it reads as the site having lost its place. The
+     rule below takes the delay off again for going away. */
+  transition: opacity 0.4s ease 0.16s;
 }
 
 .closing__line { margin: 0; font-size: var(--step-body); }
@@ -890,7 +896,7 @@ body {
   position: relative;
   display: inline-block;
   text-decoration: none;
-  transition: color 0.35s ease, opacity 0.3s ease 0.44s;
+  transition: color 0.35s ease, opacity 0.3s ease 0.26s;
 }
 
 /* This one pixel is the whole of section 15. scripts/touch.js measures it and
