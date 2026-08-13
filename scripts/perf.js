@@ -5,24 +5,31 @@
  *
  * Almost none of this page's cost is geometry. The drawing is a few thousand
  * line vertices and is effectively free. The cost is full-screen pixel work,
- * and two passes of it are stacked on each other: the grain's multiply blend,
- * and the film's own multisampled framebuffer. A current GPU absorbs both. A
- * 2013 integrated one cannot.
+ * and there is exactly one pass of it left: the film's own multisampled
+ * framebuffer.
  *
- * There used to be a third and larger pass, and this file mostly existed to
- * remove it: the glaze drifted forever, and a blur whose input moves can never
- * be cached, so the background was re-rasterised every frame on every page even
- * while it sat idle. The glaze is now held still for everybody (styles/site.css
- * section 4), which means an idle page has nothing moving on it at all and the
- * watchdog below only ever samples during a scroll — scripts/scroll.js feeds
- * sample() from inside the film loop, and that loop runs only while something
- * is moving.
+ * There used to be three, and this file mostly existed because of the other
+ * two. Both are gone for everybody rather than for slow machines only:
  *
- * THE LOW TIER REMOVES NOTHING. It trades two things a visitor cannot read: the
- * grain's blend mode, which over a backdrop this light is the same arithmetic
- * either way, and the film's framebuffer scale, which costs resolution on 1px
- * lines rather than lines. Nothing is smaller, softer, flatter or missing, and
- * a visitor who never sees the other tier cannot tell which one they are on.
+ *   - the glaze drifted, and a blur whose input moves can never be cached, so
+ *     the background was re-rasterised every frame on every page even while it
+ *     sat idle. It is held still now (styles/site.css section 4).
+ *   - the grain blended, and a full-viewport blend mode forces the entire
+ *     stack beneath it to be flattened and read back every frame anything in
+ *     it changes. It composites plainly now (section 6).
+ *
+ * Both were the right answer for every machine, not concessions for slow ones,
+ * which is why styles/site.css section 12 is now empty and nothing in CSS reads
+ * the .gpu-low class at all.
+ *
+ * Two consequences for the machinery below. An idle page now has nothing moving
+ * on it, so the watchdog only ever samples during a scroll — scripts/scroll.js
+ * feeds sample() from inside the film loop and that loop runs only while
+ * something is moving. And a demotion is now a much smaller event than it was:
+ * it lowers the film's framebuffer scale and nothing else.
+ *
+ * THE LOW TIER REMOVES NOTHING. It trades resolution on 1px lines, never lines.
+ * A visitor who never sees the other tier cannot tell which one they are on.
  * That is the entire design goal: a slow machine gets a page that looks
  * identical and runs, never a visibly cheaper page that advertises its age.
  *
@@ -155,10 +162,11 @@
   var tier = forced || stored() || guess();
 
   function apply() {
-    /* One class, and everything that hangs off the tier hangs off it — the
-       grain's blend mode in styles/site.css section 12, and the film's
-       framebuffer scale through pixelRatio() below. The glaze used to be the
-       third; it is held still on every tier now and reads no class. */
+    /* Nothing in styles/site.css reads this class any more — both rules that
+       did are defaults now. It is kept because it is the only visible marker
+       of the verdict, which is what makes ?gpu=low / ?gpu=high worth having,
+       and because the tier itself is still real: pixelRatio() below is read by
+       scripts/cinema.js for the film's framebuffer. */
     if (tier === 'low') html.classList.add('gpu-low');
     else html.classList.remove('gpu-low');
   }

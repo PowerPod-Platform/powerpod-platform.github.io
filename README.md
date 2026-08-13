@@ -58,6 +58,10 @@ that is the composition now, not a frame sampled out of a loop.
 
 The film and the chapter transitions are untouched by this and always were.
 
+The grain (section 6) went the same way for the same kind of reason: it no
+longer blends. Between them, the page's full-screen pixel work is now the film
+alone, and styles/site.css section 12 — the performance tier's CSS — is empty.
+
 ## The shape of the page
 
 Two things ride one scroll: a **film** (a fixed, transparent WebGL canvas
@@ -229,6 +233,15 @@ geometry move. `.touch-open` comes off last, not first.
 
 ## Things that will bite if changed
 
+- **The grain must never get a `mix-blend-mode` back.** A blend mode on a
+  full-viewport element at the top of the stack cannot be composited alone: the
+  compositor flattens everything beneath it into one buffer, reads it back and
+  blends, every frame anything below changes — which during a scroll is every
+  frame, at roughly eight million pixels on a DPR 2 laptop display, on top of
+  the film's own render. It is bandwidth rather than shader work, so fast
+  hardware does not absorb it; on shared-memory machines it saturates the bus
+  and spins the fan. What it bought was the film's ink lines staying at pure
+  `#000000` instead of about `#060606`.
 - **Nothing in the glaze may animate again, and `will-change` counts.** Both
   halves come back together or not at all: the animations are what move the
   blur's input, and `will-change` is what keeps each blob on its own composited

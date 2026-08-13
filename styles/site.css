@@ -382,7 +382,31 @@ body {
   z-index: 7;
   pointer-events: none;
   opacity: 0.05;
-  mix-blend-mode: multiply;
+  /* NO mix-blend-mode, and this is the single most important line in the file
+     for how hot the machine gets.
+
+     It used to be `multiply`. A blend mode on a full-viewport element at the
+     top of the stack cannot be composited on its own: the GPU needs the
+     backdrop as a readable texture, so the compositor flattens EVERYTHING
+     beneath this element into one buffer, reads it back, blends, and writes
+     out. That erases the point of every layer underneath — the film's canvas
+     and the thirty-odd scroll-driven copy animations are on their own layers
+     precisely so they can move without repainting each other, and this forced
+     all of them merged on every frame any one of them changed, which during a
+     scroll is every frame. At DPR 2 on a laptop display that is around eight
+     million pixels read, blended and written per frame, on top of the film's
+     own render at the same resolution.
+
+     It is bandwidth, not shader work, which is why a fast GPU did not help:
+     on shared-memory hardware it saturates the bus the CPU is also using, and
+     that is what spins the fan.
+
+     The cost of dropping it is one thing and only one thing. Over porcelain
+     and over the glaze the two modes are the same arithmetic at 5% opacity —
+     mid-grey noise over porcelain lands on 243.8/255 under multiply and
+     243.9/255 without it. They part only over the film's own ink lines, where
+     multiply against black stays black and a plain composite lifts a 1px line
+     from #000000 to about #060606. That is the whole of what was traded. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 240px 240px;
 }
@@ -960,32 +984,28 @@ html.touch-open .index {
 
 
 /* 12. Performance tier ===================================================== */
-/* scripts/perf.js puts .gpu-low on <html> for a machine that cannot composite
-   this page's full-screen pixel work at 60fps, either because it said so up
-   front or because the frame watchdog measured it.
+/* There are no rules in this section any more, and that is the finding worth
+   recording rather than a section worth deleting.
 
-   This section used to hold two rules and the larger of them has been promoted
-   to the default: the glaze is now held still on every tier (section 4), so
-   there is no longer a version of this page whose background is re-blurred
-   every frame. That was the pass this tier mostly existed to remove.
+   scripts/perf.js still puts .gpu-low on <html>, and the tier still does real
+   work — but all of it is now in JavaScript, through PPPerf.pixelRatio() and
+   PPPerf.onTier() in scripts/cinema.js, which size the film's multisampled
+   framebuffer. Nothing in this stylesheet reads the class.
 
-   What is left is two passes and one rule. The grain's multiply blend is
-   flattened here; the film's multisampled framebuffer is handled in JavaScript
-   rather than CSS, through PPPerf.pixelRatio() in scripts/cinema.js. Neither
-   removes, shrinks or softens anything the visitor is reading — the grain
-   keeps its frequency and its weight, and the drawing keeps every line. */
+   Both rules that used to live here were promoted to defaults, because both
+   turned out to be the right answer for every machine rather than a
+   concession for slow ones:
 
-.gpu-low .grain {
-  /* mix-blend-mode forces the compositor to flatten everything underneath
-     into one buffer, read it back, and blend the full viewport against it on
-     every frame either layer changes — which during a scroll is every frame.
-     Over a backdrop this light the two blend modes are the same arithmetic:
-     multiply against white IS the source, so at 5% over porcelain the results
-     differ by well under a perceptible step. The only place they part is over
-     the film's own ink lines, where normal blending lifts a 1px black line by
-     at most 5%. That is the entire cost of removing a full-screen pass. */
-  mix-blend-mode: normal;
-}
+     - the glaze is held still on every tier (section 4). A blur whose input
+       moves can never be cached, and it was moving on every page, forever.
+     - the grain no longer blends (section 6). A full-viewport blend mode
+       forces the whole stack beneath it to be flattened and read back every
+       frame, which is the most expensive thing a page can ask a compositor
+       for and is not worth a difference of six values out of 255.
+
+   What is left of this page's full-screen pixel work is the film itself, and
+   the film is the point of the page. If a third rule ever wants to live here,
+   the question to ask first is whether it should be the default instead. */
 
 
 /* 13. Input guard ========================================================= */
