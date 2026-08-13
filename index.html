@@ -27,6 +27,14 @@
        have a half in styles/site.css that is live before either runs. -->
   <script src="scripts/guard.js" defer></script>
   <script src="scripts/perf.js" defer></script>
+  <!-- Third, and well before three.js. Deferred scripts run in order, so
+       anything ahead of this one is time during which Get in touch is still a
+       plain link to contact.html: a click that lands before this file has
+       parsed navigates away instead of opening the card. Behind three.js and
+       the Firebase bundle that window was hundreds of kilobytes long. This
+       file is a few, and depends on nothing above it — PPFilm is read at click
+       time, not at parse time. -->
+  <script src="scripts/touch.js" defer></script>
   <script src="scripts/vendor/three.min.js" defer></script>
   <script src="scripts/pod-geometry.js" defer></script>
   <script src="scripts/cinema.js" defer></script>
@@ -34,12 +42,12 @@
   <script src="scripts/reel.js" defer></script>
   <!-- Vendored from scripts/firebase.js via `npm run build:firebase`. Loaded
        last and deferred so Firebase's parse cost can never delay the film;
-       exposes window.PPFirebase.{app,analyticsReady}. Firestore is not in
-       this file; scripts/touch.js injects it the first time Get in touch is
-       opened. -->
+       exposes window.PPFirebase.{app,analyticsReady} and runs Analytics.
+       Firestore is not in this file, and the bundle that has it does not read
+       this app either — see the note at the top of scripts/contact.js.
+       scripts/touch.js injects that bundle on the first hint that Get in touch
+       is wanted. -->
   <script src="scripts/vendor/firebase.min.js" defer></script>
-  <!-- Morphs Get in touch. No Firebase. Contact/Firestore is injected on tap. -->
-  <script src="scripts/touch.js" defer></script>
 </head>
 <body>
 

@@ -6,12 +6,13 @@ Firebase Analytics, which does call out to Google at runtime (see below).
 
 ```
 index.html                        the page (hero + 12 chapters + footer)
-contact.html                      Get in touch fallback (no film, for no-JS)
+contact.html                      Get in touch fallback, plain white (no film, for no-JS)
 styles/site.css                   sitewide stylesheet
 scripts/scroll.js                 the one scroll controller
 scripts/cinema.js                 the film: scene, choreography, update(t)
 scripts/pod-geometry.js           digitised CAD the film draws
 scripts/reel.js                   copy-animation fallback driver (see below)
+scripts/firebase-config.js        the project config, shared by both bundles
 scripts/firebase.js               Firebase app + Analytics init source
 scripts/contact.js                form: schema listener, render, submit
 scripts/touch.js                  Get in touch: underline → card (no Firebase)
@@ -224,6 +225,13 @@ and a bloom is thrown from the underline's own rect.
   growing out of one of its own pixels.
 - **The DOM holds one question at a time, so it is not the source of truth.**
   `values` in `scripts/contact.js` is. `readStep()` is the only write to it.
+- **`scripts/touch.js` must stay ahead of `three.min.js` in the defer queue.**
+  Deferred scripts run in order, and until this one has parsed, `Get in touch`
+  is still a plain link: a click landing in that window navigates to
+  `contact.html` instead of opening the card. Behind three.js and the Firebase
+  bundle that window was hundreds of kilobytes long.
+- **Serving over `file://` is not a test.** Firestore is refused from a `null`
+  origin and reports nothing; the card just waits forever. See Local preview.
 
 ## Firebase
 
@@ -246,14 +254,28 @@ npm run build          # firebase.min.js + contact.min.js
 `index.html` loads `scripts/vendor/firebase.min.js` last, deferred: `app` plus
 Analytics, assigned to `window.PPFirebase`. Firestore is not in that file.
 `scripts/touch.js` injects `scripts/vendor/contact.min.js` on the first hover,
-focus or touch of the origin.
-That bundle uses `window.PPFirebase.app` (it must not call `initializeApp`
-again). It listens to `config/form` and writes `submissions/{autoId}` only
-after Send succeeds. The first schema to arrive is the one that renders and the
-listener ignores every later one: re-rendering mid-answer would throw away the
-values already given, and after Send it would throw away the confirmation.
+focus or touch of the origin. It listens to `config/form` and writes
+`submissions/{autoId}` only after Send succeeds. The first schema to arrive is
+the one that renders and the listener ignores every later one: re-rendering
+mid-answer would throw away the values already given, and after Send it would
+throw away the confirmation.
 
-`contact.html` loads `firebase.min.js` then `contact.min.js`, same contract.
+**The two bundles do not share a Firebase app, and cannot.** Each carries its
+own copy of the SDK, and `_registerComponent` writes into the registry of the
+copy that runs it — so the app `firebase.js` created carries `firebase.js`'s
+own container, and handing it to the other copy's `getFirestore()` throws
+`Service firestore is not available`. That is what shipped, on both pages, for
+as long as `contact.js` read `window.PPFirebase.app`. Each bundle now calls
+`initializeApp` itself against the shared `scripts/firebase-config.js`. Two
+SDK copies, two app objects, one project. The split still earns its keep: it
+is what keeps ~350kb of Firestore off a visit that never opens the form.
+
+If you ever see that error again, this is it, and the fix is never to make one
+bundle borrow the other's app.
+
+`contact.html` loads `contact.min.js` on its own — no `perf.js` (there is no
+film and no glaze on that page to set a tier for) and no dependency on
+`firebase.min.js`, which it loads last only for Analytics.
 
 Rules live in `firestore.rules` and deploy independently of GitHub Pages:
 

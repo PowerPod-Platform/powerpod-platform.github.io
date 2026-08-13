@@ -2,12 +2,23 @@
 //
 // Source for scripts/vendor/contact.min.js (`npm run build:contact`). Never
 // served as a module. Firestore + App Check + the form, and nothing else.
-// The film page already loaded scripts/vendor/firebase.min.js, which left
-// the app on window.PPFirebase.app. This bundle must not call initializeApp
-// again: two copies of the Firebase SDK do not share getApps().
 //
-// Injected on first tap by scripts/touch.js. contact.html loads firebase.min.js
-// then this file, same contract.
+// THIS BUNDLE INITIALISES ITS OWN FIREBASE APP, and must. It carries its own
+// copy of the SDK, and a second copy cannot borrow the first one's app object:
+// `_registerComponent` writes the Firestore component into the registry of the
+// copy that runs it, and the app scripts/firebase.js created carries
+// scripts/firebase.js's own container. Handing that app to this copy's
+// getFirestore() throws `Service firestore is not available` — which is
+// exactly what shipped, on both the film page and contact.html, for as long as
+// the two bundles tried to share one app.
+//
+// So: two SDK copies, two app objects, one project id (scripts/firebase-config.js).
+// They share nothing. Analytics lives over there, Firestore lives here, and
+// neither needs to know about the other. The split is still worth it — it is
+// what keeps ~350kb of Firestore off a visit that never opens the form.
+//
+// Injected by scripts/touch.js on the first hint that the form is wanted.
+// contact.html loads it directly.
 //
 // ONE QUESTION AT A TIME. The card this renders into is a fixed size and never
 // changes shape (styles/site.css section 15), which is what lets the underline
@@ -20,7 +31,9 @@
 // therefore cannot be the source of truth. `values` is. Everything reads from
 // it — validation, the showIf skips, the ticks and the submitted answers — and
 // the only writes are `readStep()` on the way out of a question.
+import { initializeApp, getApps } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import { firebaseConfig } from './firebase-config.js';
 import {
   getFirestore,
   initializeFirestore,
@@ -71,10 +84,12 @@ function isLocalHost() {
   return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
 }
 
+// Idempotent within this copy of the SDK: getApps() reads this copy's registry,
+// which is empty until the line below runs and never sees the app that
+// scripts/firebase.js made.
 function getApp() {
-  const app = window.PPFirebase && window.PPFirebase.app;
-  if (!app) throw new Error('PPFirebase.app is missing. Load firebase.min.js first.');
-  return app;
+  const [existing] = getApps();
+  return existing || initializeApp(firebaseConfig);
 }
 
 function initAppCheck(app) {
@@ -544,15 +559,8 @@ function start() {
   const mount = document.getElementById('touch-mount');
   if (!mount) return;
 
-  let app;
-  try {
-    app = getApp();
-  } catch {
-    window.addEventListener('load', start, { once: true });
-    return;
-  }
-
   window.PPContactStarted = true;
+  const app = getApp();
   initAppCheck(app);
   const db = getDb(app);
   const formRef = doc(db, 'config', 'form');

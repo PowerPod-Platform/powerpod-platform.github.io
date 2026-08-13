@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light">
-  <meta name="theme-color" content="#faf8f5">
+  <meta name="theme-color" content="#ffffff">
 
   <title>Get in touch · PowerPod Platform™</title>
   <meta name="description" content="A few questions and we'll come back to you.">
@@ -12,26 +12,20 @@
   <link rel="preload" href="fonts/DMSans-Variable-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles/site.css">
 
-  <!-- Fallback for no-JS on the film page (the origin keeps href="contact.html").
-       The same card and the same one-question-at-a-time form, on the same
-       glaze, with no film to hold behind it and no underline to grow out of.
-       firebase.min.js must load before contact.min.js so this bundle can take
-       window.PPFirebase.app. -->
-  <script src="scripts/perf.js" defer></script>
-  <script src="scripts/vendor/firebase.min.js" defer></script>
+  <!-- The fallback for no-JS on the film page, which keeps href="contact.html"
+       on the origin. Same card and same one-question-at-a-time form, on a plain
+       white page: there is no film to hold behind it and no underline to grow
+       out of here, and the glaze is the film page's material, not this one's.
+
+       No perf.js. It exists to open a WebGL context, identify the GPU and set
+       the tier that the film's framebuffer and the glaze's rules read, and this
+       page has neither. contact.min.js carries its own Firebase app, so
+       firebase.min.js is not a prerequisite either; it is loaded only for
+       Analytics, and last. -->
   <script src="scripts/vendor/contact.min.js" defer></script>
+  <script src="scripts/vendor/firebase.min.js" defer></script>
 </head>
-<body>
-
-  <div class="glaze" aria-hidden="true">
-    <div class="glaze__blob glaze__blob--blush"></div>
-    <div class="glaze__blob glaze__blob--celadon"></div>
-    <div class="glaze__blob glaze__blob--periwinkle"></div>
-    <div class="glaze__blob glaze__blob--clay"></div>
-    <div class="glaze__sheen"></div>
-  </div>
-
-  <div class="grain" aria-hidden="true"></div>
+<body class="page--plain">
 
   <main class="touch">
     <div class="touch-sheet touch-sheet--static">

@@ -7,21 +7,16 @@
 // itself to the global scope rather than using ES modules.
 //
 // Only `app` (Firebase core) and Analytics are initialized here. Firestore
-// lives in scripts/contact.js, injected on first Get in touch tap, and reads
-// the app from window.PPFirebase.app. A visitor who never opens the form
-// never pays to parse Firestore.
+// lives in scripts/contact.js, injected on the first hint that Get in touch is
+// wanted, so a visitor who never opens the form never pays to parse it.
+//
+// That bundle does NOT read the app from here. It carries its own copy of the
+// SDK and initialises its own app from the same config; the note at the top of
+// scripts/contact.js says why it has to. `window.PPFirebase.app` is exported
+// anyway because it costs nothing and the film page's Analytics is here.
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-
-const firebaseConfig = {
-  apiKey: 'AIzaSyCmAYl2aRzsAakeIvTw7Sc00MJcQiAlo_M',
-  authDomain: 'powerpod-platform.firebaseapp.com',
-  projectId: 'powerpod-platform',
-  storageBucket: 'powerpod-platform.firebasestorage.app',
-  messagingSenderId: '304505564073',
-  appId: '1:304505564073:web:faec52bc763b84dee532b8',
-  measurementId: 'G-XPWQLQM6GX',
-};
+import { firebaseConfig } from './firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
 

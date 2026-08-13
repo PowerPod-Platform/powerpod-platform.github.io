@@ -1501,8 +1501,37 @@ html.film-hold.touch-open #film {
 .touch-close::after  { transform: rotate(-45deg); }
 
 /* contact.html ------------------------------------------------------------- */
-/* The no-JS fallback: the same card, laid on the same glaze, with no film
-   behind it and nothing to morph from. */
+/* The no-JS fallback: the same card and the same form, on a plain white page.
+   No glaze and no grain, because both of those are the film page's material
+   and this page is not the film page — it is the one surface on this site
+   whose only job is to be a form.
+
+   Which means the card stops pretending to be glass. --card-fill and the
+   backdrop blur exist to let the drawing and the ceramic show through a pane;
+   over flat white there is nothing to show through and nothing to blur, so
+   the card is simply a white panel with an edge, and the two translucent
+   fills inside it — the choices and the CTA — need a real one. */
+
+.page--plain {
+  background-color: #fff;
+}
+
+.page--plain .touch-sheet--static {
+  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  background: #fff;
+  box-shadow: 0 1.4rem 3rem -1.8rem color-mix(in srgb, var(--ink) 22%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.page--plain .touch__choice { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.page--plain .touch__choice:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.page--plain .touch__choice:has(.touch__radio:checked) { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+
+.page--plain .cta { background: transparent; }
+.page--plain .cta:hover,
+.page--plain .cta:focus-visible { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+
 .touch {
   position: relative;
   z-index: 4;
