@@ -13,7 +13,15 @@ rules_version = '2';
 //   - updatedAt: timestamp
 //   - fields: list of maps
 //       id, label, type, required, maxLength, options[], showIf
+//   - fieldIds: list of strings, every field id in `fields`
+//   - requiredIds: list of strings, the field ids that must always be answered
 // This document has no PII.
+//
+// Collection: formVersions
+// Document ID: the version number, as a string
+// Public read / write: no. Admin SDK only. Immutable once written.
+// Holds the schema as published, so Paddock can show an old entry with the
+// wording it was actually asked.
 //
 // Collection: submissions
 // Document ID: auto-id
@@ -25,27 +33,42 @@ rules_version = '2';
 //   - createdAt: timestamp (must be request.time / serverTimestamp)
 //   - source: string, exactly "website"
 //
-// Adding a question later is a config/form write (Admin SDK) plus a rules
-// change if the new field id is not in ANSWER_KEYS below. The website
-// renderer is generic; these rules are the allow-list that keeps public
-// creates from becoming a 1 MiB junk dump.
+// ---------------------------------------------------------------
+// WHY THESE RULES DO NOT NAME ANY FIELD
+// ---------------------------------------------------------------
+// They used to. The nine field ids were written out twice, once as an
+// allow-list and once as a required-list, which meant a question added to
+// config/form was rejected on submit until this file was edited and
+// redeployed. Since the form is now edited from Paddock and published to
+// config/form directly, that would have made every form change silently
+// broken until someone remembered to deploy.
+//
+// So the allow-list moved into the schema document itself. `fieldIds` and
+// `requiredIds` are flat string arrays written alongside `fields` on every
+// publish, and the get() below reads them. Rules cannot iterate an array of
+// maps, which is the whole reason those two flat copies exist. One get() per
+// create, out of the ten a single-document request is allowed.
+//
+// `requiredIds` deliberately excludes any field carrying a `showIf`. A
+// conditional question that was never asked is legitimately absent from a
+// submission and must not be demanded here.
+//
+// The tradeoff: per-value length and per-select enum checks are gone, because
+// rules have no way to walk a map's values. What is left holding the line is
+// Firestore's own 1 MiB document ceiling, the answers.size() cap below, and
+// App Check. Turning App Check enforcement on is the real defence against a
+// junk dump; the client wiring for it already exists in scripts/contact.js and
+// only needs a reCAPTCHA v3 site key.
 //
 // ===============================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isShortString(value, minLen, maxLen) {
-      return value is string
-        && value.size() >= minLen
-        && value.size() <= maxLen;
-    }
-
-    function isValidEmail(value) {
-      return value is string
-        && value.size() >= 3
-        && value.size() <= 254
-        && value.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    // The live schema. Rules get() bypasses rules, so this reads whether or
+    // not the caller could read the document themselves.
+    function formSpec() {
+      return get(/databases/$(database)/documents/config/form).data;
     }
 
     function isValidSubmission(data) {
@@ -56,58 +79,26 @@ service cloud.firestore {
         && data.formVersion <= 10000
         && data.createdAt is timestamp
         && data.createdAt == request.time
-        && isValidAnswers(data.answers);
+        && isValidAnswers(data.answers, formSpec());
     }
 
-    function isValidAnswers(answers) {
+    // `spec` is passed in rather than fetched here, so the get() above happens
+    // exactly once per create no matter how many checks read from it.
+    function isValidAnswers(answers, spec) {
       return answers is map
-        && answers.keys().hasOnly([
-          'name',
-          'companyName',
-          'designation',
-          'email',
-          'phone',
-          'primaryGoal',
-          'primaryGoalOther',
-          'fleetSize',
-          'targetTimeline'
-        ])
-        && answers.keys().hasAll([
-          'name',
-          'companyName',
-          'designation',
-          'email',
-          'phone',
-          'primaryGoal',
-          'fleetSize',
-          'targetTimeline'
-        ])
-        && isShortString(answers.name, 1, 120)
-        && isShortString(answers.companyName, 1, 160)
-        && isShortString(answers.designation, 1, 120)
-        && isValidEmail(answers.email)
-        && isShortString(answers.phone, 7, 32)
-        && answers.primaryGoal in [
-          'closedFleet',
-          'publicNetwork',
-          'oemIntegrate',
-          'other'
-        ]
-        && answers.fleetSize in ['10-50', '51-200', '200plus']
-        && answers.targetTimeline in ['immediately', '3-6', '6plus']
-        && (
-          answers.primaryGoal == 'other'
-            ? (
-              'primaryGoalOther' in answers
-              && isShortString(answers.primaryGoalOther, 1, 200)
-            )
-            : !('primaryGoalOther' in answers)
-        );
+        && answers.size() <= 40
+        && answers.keys().hasOnly(spec.fieldIds)
+        && answers.keys().hasAll(spec.requiredIds);
     }
 
     match /config/{docId} {
       allow read: if docId == 'form';
       allow write: if false;
+    }
+
+    // Written and read by the Admin SDK from Paddock only.
+    match /formVersions/{version} {
+      allow read, write: if false;
     }
 
     match /submissions/{id} {

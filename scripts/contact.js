@@ -40,7 +40,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
   doc,
-  onSnapshot,
+  getDoc,
   collection,
   addDoc,
   serverTimestamp,
@@ -568,42 +568,39 @@ function start() {
   const formRef = doc(db, 'config', 'form');
 
   let boundForm = null;
-  let unsub = null;
 
   function fail() {
     boundForm = null;
     paintRetry(mount, attach);
   }
 
-  function attach() {
-    if (unsub) {
-      unsub();
-      unsub = null;
+  /* One read, not a subscription.
+     This used to be an onSnapshot that stayed live for the whole visit and
+     then threw away every update it received, because re-rendering under an
+     answer part way through would discard the values already given, and after
+     Send it would discard the confirmation. So the listener held a channel
+     open to deliver something the code had already decided to ignore.
+     A single read has exactly the same outcome for this visitor and costs a
+     fraction of it: a schema published from Paddock reaches whoever opens the
+     card next, which is the same guarantee the listener was giving. */
+  async function attach() {
+    if (boundForm) return;
+    try {
+      const snap = await getDoc(formRef);
+      if (!snap.exists()) {
+        fail();
+        return;
+      }
+      const schema = parseSchema(snap.data());
+      if (!schema) {
+        fail();
+        return;
+      }
+      boundForm = renderForm(mount, schema, db);
+      if (!boundForm) fail();
+    } catch {
+      fail();
     }
-    unsub = onSnapshot(
-      formRef,
-      (snap) => {
-        if (!snap.exists()) {
-          fail();
-          return;
-        }
-        // The listener stays live so a schema that lands late still arrives,
-        // but the first one to render wins for the rest of the visit. The DOM
-        // holds one question at a time now: re-rendering under an answer part
-        // way through would throw away every value already given, and after
-        // Send it would throw away the confirmation. An edit in the console
-        // reaches the next visitor, not this one.
-        if (boundForm) return;
-        const schema = parseSchema(snap.data());
-        if (!schema) {
-          fail();
-          return;
-        }
-        boundForm = renderForm(mount, schema, db);
-        if (!boundForm) fail();
-      },
-      fail
-    );
   }
 
   attach();
