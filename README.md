@@ -22,6 +22,7 @@ scripts/vendor/contact.min.js     Firebase + Firestore + form, bundled and vendo
 firestore.rules                   public form schema read, create-only submissions
 firebase.json                     rules-only deploy (Hosting stays GitHub Pages)
 fonts/DMSans-Variable-latin.woff2 DM Sans variable, weights 100–1000
+images/members/*.svg              member logos, one-colour vectors (see Member logos)
 package.json                      dev-only tooling to rebuild vendored Firebase bundles
 CNAME                             custom domain
 .nojekyll                         disables GitHub Pages' Jekyll processing
@@ -183,10 +184,38 @@ Steps 1 to 3 are all the copy needs: the runway height, every
 departed like the others there would be an empty viewport between it and the
 closing footer, since the stage still has its own height to scroll away.
 
+## Member logos
+
+`images/members/` holds one SVG per member: a single-colour silhouette in
+`--ink`, cropped tight to the artwork with no padding. The page sets the grey
+(`opacity` on `.roster__logo`), so no logo carries a colour of its own, and
+holes are holes: GT-Force's G is a cut-out, not white paint, so the glaze
+shows through it the way it shows through everything else.
+
+They were traced from small raster originals, 37 to 150px tall and two of
+them white on transparent. Each was reduced to a coverage mask, upscaled 4x
+by two Real-ESRGAN line-art models whose outputs were averaged (each model
+leaves small defects the other does not, so averaging cancels them), then
+thresholded and traced with potrace. That is as far as those sources go.
+Where a member can supply its own vector artwork, prefer it, flattened to one
+colour.
+
+To add or replace one:
+
+1. Put a one-colour SVG in `images/members/`: fill `#0a0a0a`, `viewBox`
+   tight to the artwork.
+2. Add an `<li>` to `.roster` in `index.html`, alphabetically, with `alt`,
+   `width`/`height` in the SVG's proportions, and a `--w`.
+3. Set `--w` by eye, with the whole row on screen on a desktop and a phone.
+   It is a width in roster units, chosen for optical weight rather than size,
+   which is why no two figures in the file match.
+4. Phones break the row three over two (`.roster::after`, section 11). A
+   sixth member makes that three over three; past six, revisit it.
+
 ## Still placeholder
 
-`grep -n data-placeholder index.html` lists what is not real yet: the member
-roster, and the specification CTA. All other copy is final.
+`grep -n data-placeholder index.html` lists what is not real yet: the
+specification CTA. All other copy is final.
 
 **No em dashes in rendered copy.** The commas are deliberate. This includes
 every string on `contact.html` and every label seeded into `config/form`.
